@@ -207,10 +207,8 @@
   .book-card.sel{border-color:var(--active);background:var(--active);box-shadow:0 4px 14px rgba(88,204,2,.3);}
   .book-card.sel .book-card-name{color:#fff;}
   .book-card.sel .book-card-count{color:rgba(255,255,255,.9);}
-  .book-card.locked{opacity:.5;}
   .book-card-name{font-weight:800;font-size:.87rem;color:var(--ink);text-align:center;}
   .book-card-count{font-size:.68rem;color:var(--muted);font-weight:700;}
-  .book-card-lock{position:absolute;top:6px;right:8px;font-size:.7rem;}
   .lbtn[data-l="0"]{border-color:var(--active);background:var(--active-bg);color:var(--active-dark);}
   .lbtn[data-l="1"]{border-color:var(--l1a);background:var(--l1b);color:var(--l1a);}
   .lbtn[data-l="2"]{border-color:var(--l2a);background:var(--l2b);color:var(--l2a);}
