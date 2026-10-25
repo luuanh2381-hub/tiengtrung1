@@ -31,7 +31,6 @@
       <input type="password" id="auth-password" autocomplete="current-password" placeholder="••••••">
     </div>
     <button class="auth-submit" id="auth-submit" onclick="authSubmit()">Đăng nhập</button>
-    <button class="auth-guest" onclick="authContinueAsGuest()">Dùng thử không cần tài khoản (tiến độ chỉ lưu trên máy này)</button>
   </div>
 </div>
 
@@ -109,7 +108,7 @@
   <h1>🀄<span class="brand-text"> 學中文</span></h1>
   <span id="streak-badge" title="Số ngày học liên tiếp">🔥 0</span>
   <span id="study-timer-chip" style="display:none;background:var(--active-c,#e0e7ff);padding:3px 9px;border-radius:16px;font-size:.7rem;font-weight:800;color:var(--active-dark,#3730a3);"></span>
-  <button id="user-badge" onclick="authOpenMenu()">👤 Khách</button>
+  <button id="user-badge" onclick="authOpenMenu()">👤</button>
   <button id="display-btn" class="display-btn" onclick="navToggleDisplay()" aria-label="Hiển thị" aria-expanded="false" title="Hiển thị">⚙️<i id="display-dot"></i></button>
 </div>
 <!-- V116: các nút giao diện gom vào 1 bảng (giữ nguyên id để code cũ cập nhật nhãn như trước) -->
