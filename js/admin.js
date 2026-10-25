@@ -81,9 +81,9 @@ function renderVocabAdmin() {
     <div id="hanviet-progress-area" style="color:var(--muted);padding:14px 0;text-align:center;">Đang tải...</div>
   </div>
   <div class="panel">
-    <div class="panel-title">📖 Ví dụ theo từng từ (đảm bảo mỗi từ có sẵn 3 ví dụ)</div>
+    <div class="panel-title">📖 Ví dụ theo từng từ (mỗi từ có ít nhất 1 ví dụ)</div>
     <div style="font-size:.78rem;color:var(--muted);margin-bottom:10px;">
-      Khác với câu luyện dịch ở trên (theo cả bài), đây là kho ví dụ minh hoạ hiện trong Trắc nghiệm — mỗi từ được đảm bảo có sẵn 3 câu ví dụ riêng (AI tự kiểm tra câu có đúng chứa từ đó không trước khi lưu). Có thể mất nhiều ngày để phủ hết toàn bộ từ vựng.
+      Khác với câu luyện dịch ở trên (theo cả bài), đây là kho ví dụ minh hoạ hiện trong Trắc nghiệm — mỗi từ có ít nhất 1 câu ví dụ riêng (AI tự kiểm tra câu có đúng chứa từ đó không trước khi lưu). Có thể mất nhiều ngày để phủ hết toàn bộ từ vựng.
     </div>
     <button class="btn btn-sm" style="background:var(--l9c);color:var(--l9a);margin-bottom:12px;" id="gen-word-ex-btn" onclick="triggerWordExampleGeneration()">🚀 Chạy sinh ví dụ theo từ ngay</button>
     <div id="gen-word-ex-result" style="font-size:.8rem;color:var(--muted);margin-bottom:10px;"></div>
@@ -317,7 +317,7 @@ async function loadWordExampleProgress() {
     const pct = data.total ? Math.round(data.done / data.total * 100) : 0;
     area.innerHTML = `
       <div style="display:flex;justify-content:space-between;font-size:.85rem;font-weight:700;margin-bottom:6px;">
-        <span>${data.done} / ${data.total} từ đã có đủ 3 ví dụ</span>
+        <span>${data.done} / ${data.total} từ đã có ví dụ</span>
         <span style="color:var(--active-dark)">${pct}%</span>
       </div>
       <div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:var(--active);"></div></div>`;
