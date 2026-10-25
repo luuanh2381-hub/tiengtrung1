@@ -2637,6 +2637,8 @@ function parseAiJson(text) {
 // mỗi câu được kiểm tra chắc chắn có chứa đúng chữ Hán của từ đó (nếu AI trả sai, câu đó bị loại,
 // từ vẫn coi là "chưa xong" và sẽ được thử lại ở lượt chạy sau).
 const TARGET_EXAMPLES_PER_WORD = 3;
+// FIX V122: chỉ cần ÍT NHẤT 1 ví dụ là coi từ đó đã hoàn thành (từ chưa có gì vẫn sinh tối đa 3 câu).
+const MIN_EXAMPLES_PER_WORD = 1;
 const WORD_BATCH_SIZE = 12;
 // Logic sinh CHIẾT TỰ BỘ THỦ cho từng chữ Hán đơn lẻ (khác word_examples — đây là phân tích cấu tạo
 // mặt chữ, không phải câu ví dụ). Chữ nào không tách được rõ ràng thì AI chỉ ghi 1 ghi chú ngắn.
@@ -2783,7 +2785,7 @@ async function runWordExampleGeneration(timeBudgetMs) {
   const pending = allWords.filter(w => {
     if (seenHz.has(w.hz)) return false; // 1 chữ Hán chỉ xử lý 1 lần dù thuộc nhiều bài
     seenHz.add(w.hz);
-    return (existing[w.hz] || 0) < TARGET_EXAMPLES_PER_WORD;
+    return (existing[w.hz] || 0) < MIN_EXAMPLES_PER_WORD;
   });
   let batches = 0, wordsDone = 0, wordsRetried = 0, errors = 0;
   const errorSamples = []; // vài lỗi mẫu (không lặp lại thông điệp) để hiện chi tiết cho admin xem
@@ -2811,7 +2813,7 @@ Trả lời CHỈ bằng JSON hợp lệ, đúng định dạng, đúng thứ t�
         const valid = item.examples.filter(e => e && e.zh && e.vi && e.zh.includes(w.hz)).slice(0, TARGET_EXAMPLES_PER_WORD);
         if (valid.length > 0) {
           await insertWordExamples(w.hz, w.l, valid);
-          if (valid.length >= TARGET_EXAMPLES_PER_WORD) wordsDone++; else wordsRetried++;
+          if (valid.length >= MIN_EXAMPLES_PER_WORD) wordsDone++; else wordsRetried++;
         } else {
           wordsRetried++;
         }
@@ -3067,7 +3069,7 @@ app.get('/api/admin/word-examples/progress', async (req, res) => {
     const counts = await getWordExampleCounts();
     const uniqueHz = [...new Set(allWords.map(w => w.hz))];
     const total = uniqueHz.length;
-    const done = uniqueHz.filter(hz => (counts[hz] || 0) >= TARGET_EXAMPLES_PER_WORD).length;
+    const done = uniqueHz.filter(hz => (counts[hz] || 0) >= MIN_EXAMPLES_PER_WORD).length;
     res.json({ ok: true, total, done });
   } catch (e) { fail(res, e); }
 });
