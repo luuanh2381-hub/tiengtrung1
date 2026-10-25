@@ -652,21 +652,6 @@ app.get('/api/vocab', async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
-// ── Lấy từ vựng cho KHÁCH (chưa đăng nhập) — không cần token, nhưng chỉ cho phép tối đa
-//     Bài 1-5 (giới hạn dùng thử của khách), server tự chặn dù client gửi số bài nào khác ──
-const GUEST_MAX_LESSON_SERVER = 5;
-app.get('/api/vocab/public', async (req, res) => {
-  try {
-    const raw = String(req.query.lessons || '').trim();
-    if (!raw) return res.json({ ok: true, vocab: [] });
-    const lessons = raw.split(',').map(s => parseInt(s, 10)).filter(n => Number.isFinite(n) && n >= 1 && n <= GUEST_MAX_LESSON_SERVER);
-    if (lessons.length === 0) return res.json({ ok: true, vocab: [] });
-    const vocab = await getVocabByLessons(lessons);
-    res.set('Cache-Control', 'public, max-age=60');
-    res.json({ ok: true, vocab });
-  } catch (e) { fail(res, e); }
-});
-
 // ── Đếm nhanh số từ theo từng bài (payload rất nhỏ, không chứa dữ liệu nhạy cảm) — để hiện số từ
 //     ở màn chọn Quyển/level mà không cần tải cả nội dung. Công khai, không cần đăng nhập. ──
 app.get('/api/vocab/counts', async (req, res) => {
