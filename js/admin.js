@@ -3,7 +3,7 @@
 // TAB: QUẢN TRỊ (chỉ admin)
 // ════════════════════════════════════════════════════
 function renderAdmin() {
-  if (isGuest || !isAdminRole()) {
+  if (!isAdminRole()) {
     return `<div class="panel center" style="padding:40px">Bạn không có quyền truy cập mục này.</div>`;
   }
   return `<div class="panel">
@@ -21,7 +21,7 @@ function renderAdmin() {
 // QUẢN LÝ TỪ VỰNG — tách riêng khỏi tab Quản trị tài khoản
 // ════════════════════════════════════════════════════
 function renderVocabAdmin() {
-  if (isGuest || !isAdminRole()) {
+  if (!isAdminRole()) {
     return `<div class="panel center" style="padding:40px">Bạn không có quyền truy cập mục này.</div>`;
   }
   return `<div class="panel">
@@ -123,7 +123,7 @@ function renderVocabAdmin() {
   </div>`;
 }
 function bindVocabAdmin() {
-  if (isGuest || !isAdminRole()) return;
+  if (!isAdminRole()) return;
   loadBookDefsAdminList();
   loadVocabAdminList();
   loadHanVietProgress();
@@ -402,11 +402,10 @@ async function triggerHanziPartsGeneration() {
 // thấy kết quả ngay mà không cần tải lại trang.
 async function refreshVocabHanviet() {
   if (!loadedLessonNumbers.size) return;
-  const url = (isGuest || !authToken)
-    ? '/api/vocab/public?lessons=' + [...loadedLessonNumbers].join(',')
-    : '/api/vocab?lessons=' + [...loadedLessonNumbers].join(',');
+  if (!authToken) return;
+  const url = '/api/vocab?lessons=' + [...loadedLessonNumbers].join(',');
   try {
-    const res = await fetch(url, (isGuest || !authToken) ? {} : { headers: authHeaders() });
+    const res = await fetch(url, { headers: authHeaders() });
     const data = await res.json();
     if (data.ok && Array.isArray(data.vocab)) {
       const byKey = new Map(data.vocab.map(w => [w.hz + '-' + w.l, w]));
@@ -823,7 +822,7 @@ async function clearAllVocab() {
   }
 }
 async function bindAdmin() {
-  if (isGuest || !isAdminRole()) return;
+  if (!isAdminRole()) return;
   if (currentRole === 'superadmin') adminLoadReg(); // V119.3: trạng thái trang đăng ký (không chặn danh sách tài khoản)
   await adminLoadVisits();
   await adminLoadUsers();

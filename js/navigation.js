@@ -32,7 +32,6 @@ function render() {
 
 // Lesson filter html — 2 ô droplist đa lựa chọn: chọn Quyển/level, rồi (nếu cần) chọn bài cụ thể
 function lessonFilterHtml() {
-  const loggedIn = isLoggedIn();
   const levelSelect = levelSelectHtml();
   const lessonSelect = lessonSelectHtml();
   const noBookHint = selectedBookIds.size === 0
@@ -45,20 +44,13 @@ function lessonFilterHtml() {
     : (selectedBookIds.size > 1
       ? `<div style="font-size:.72rem;color:var(--muted);margin:2px 0 8px;">Đang chọn ${selectedBookIds.size} mục: ${[...selectedBookIds].map(id=>BOOKS.find(b=>b.id===id).name).join(', ')}</div>`
       : ''));
-  const guestNotice = !loggedIn
-    ? `<div style="font-size:.75rem;color:var(--muted);background:${lessonBg(0)};border:1px solid var(--active);border-radius:10px;padding:8px 10px;margin-bottom:8px;">
-        🔒 Chưa đăng nhập: bạn chỉ học được <b>Bài 1–${GUEST_MAX_LESSON}</b> của Quyển 1.
-        <a href="javascript:void(0)" onclick="openAuthGate()" style="color:var(--active);font-weight:700;">Đăng nhập / Đăng ký</a> để mở khoá toàn bộ và lưu tiến độ.
-      </div>`
-    : '';
-  return `<div id="book-filter" style="margin-bottom:8px;">${levelSelect}${lessonSelect}</div>` + noBookHint + hint + guestNotice;
+  return `<div id="book-filter" style="margin-bottom:8px;">${levelSelect}${lessonSelect}</div>` + noBookHint + hint;
 }
 
 function getFilteredWords() {
   let words;
   if (lessonsAllMode) words = WORDS.filter(w => selectedBookIds.has(bookOfLesson(w.l)));
   else words = WORDS.filter(w => selectedLessons.has(w.l));
-  if (!isLoggedIn()) words = words.filter(w => w.l <= GUEST_MAX_LESSON);
   return words;
 }
 // Dùng cho các màn lọc theo bài không phải từ vựng (vd. câu ví dụ ở màn Dịch câu)

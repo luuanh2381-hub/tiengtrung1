@@ -170,12 +170,8 @@ let selectedBookIds = new Set([1]);
 let selectedLessons = new Set(); // các bài đang chọn riêng lẻ (chỉ có ý nghĩa khi lessonsAllMode = false)
 let lessonsAllMode = true; // true = học hết tất cả các bài trong (các) Quyển/level đang chọn
 
-// ── Giới hạn cho khách / chưa đăng nhập: chỉ được học tối đa 5 bài đầu của Quyển 1 ──
-const GUEST_MAX_LESSON = 5;
-function isLoggedIn() { return !isGuest && !!authToken && !!authUsername; }
-function guestLimitNotice() {
-  openAuthGate();
-}
+// Đã đăng nhập hay chưa (không còn chế độ dùng thử: chưa đăng nhập thì chỉ thấy màn hình đăng nhập).
+function isLoggedIn() { return !!authToken && !!authUsername; }
 
 // Toàn bộ các bài học thuộc những Quyển/level đang được chọn (đã gộp, đã sắp xếp)
 function lessonsOfSelection() {
@@ -184,8 +180,8 @@ function lessonsOfSelection() {
   return [...set].sort((a,b)=>a-b);
 }
 
-// Lưu lại lựa chọn Quyển/level + bài hiện tại vào progressState.ui (đồng bộ lên server, gộp cả
-// khách lẫn tài khoản — cacheProgressLocally tự lưu máy, scheduleSync tự bỏ qua nếu là khách)
+// Lưu lại lựa chọn Quyển/level + bài hiện tại vào progressState.ui (đồng bộ lên server —
+// cacheProgressLocally tự lưu máy, scheduleSync chỉ đẩy lên server khi đã đăng nhập)
 function saveSelectionState() {
   progressState.ui.selectedBookIds = [...selectedBookIds];
   progressState.ui.selectedLessons = [...selectedLessons];
@@ -202,7 +198,6 @@ function saveSelectionState() {
 
 // Bấm 1 thẻ Quyển/level: bật/tắt trong danh sách đang chọn (giữ lại ít nhất 1 mục luôn được chọn)
 function toggleBook(id) {
-  if (!isLoggedIn() && id !== 1) { guestLimitNotice(); return; }
   if (selectedBookIds.has(id)) {
     selectedBookIds.delete(id); // cho phép bỏ chọn hết, không bắt buộc giữ lại tối thiểu 1 mục
   } else {
@@ -218,7 +213,6 @@ function toggleBook(id) {
 function selectAllLessonsInSelection() { selectedLessons.clear(); lessonsAllMode = true; saveSelectionState(); render(); }
 // Bấm 1 thẻ bài cụ thể: bật/tắt bài đó (chọn được nhiều bài cùng lúc, có thể bỏ tích hết để không chọn bài nào)
 function toggleLessonChip(l) {
-  if (!isLoggedIn() && l > GUEST_MAX_LESSON) { guestLimitNotice(); return; }
   lessonsAllMode = false;
   if (selectedLessons.has(l)) selectedLessons.delete(l);
   else selectedLessons.add(l);
@@ -252,7 +246,6 @@ function bookWordCount(bookId) {
 // Thẻ chọn Quyển/level, nhóm theo từng loại (Giáo trình cơ bản / Từ vựng mở rộng / Luyện thi HSK...)
 // Có thể chạm nhiều thẻ để chọn cùng lúc.
 function levelSelectHtml() {
-  const loggedIn = isLoggedIn();
   const groups = [];
   for (const b of BOOKS) if (!groups.includes(b.group)) groups.push(b.group);
   return groups.map(g => {
@@ -262,11 +255,9 @@ function levelSelectHtml() {
       .filter(b => bookWordCount(b.id) > 0 || selectedBookIds.has(b.id));
     if (booksInGroup.length === 0) return '';
     const cards = booksInGroup.map(b => {
-      const locked = !loggedIn && b.id !== 1;
       const sel = selectedBookIds.has(b.id);
       const count = bookWordCount(b.id);
-      return `<button class="book-card${sel?' sel':''}${locked?' locked':''}" onclick="toggleBook(${b.id})">
-        ${locked?'<span class="book-card-lock">🔒</span>':''}
+      return `<button class="book-card${sel?' sel':''}" onclick="toggleBook(${b.id})">
         <span class="book-card-name">${b.name}</span>
         <span class="book-card-count">${count} từ</span>
       </button>`;
@@ -289,15 +280,13 @@ function lessonSelectHtml() {
   const set = new Set();
   for (const id of multiLessonIds) for (const l of lessonsOfBook(id)) set.add(l);
   const lessons = [...set].sort((a,b)=>a-b);
-  const loggedIn = isLoggedIn();
   const allBtn = `<button class="lbtn${lessonsAllMode?' sel':''}" style="${lessonsAllMode ? `border-color:var(--active);background:var(--active);color:#fff;` : `border-color:var(--active);background:${lessonBg(0)};color:var(--active);`}" onclick="selectAllLessonsInSelection()">Tất cả</button>`;
   const chips = lessons.map(l => {
     const sel = !lessonsAllMode && selectedLessons.has(l);
-    const locked = !loggedIn && l > GUEST_MAX_LESSON;
     const style = sel
       ? `border-color:${lessonColor(l)};background:${lessonColor(l)};color:#fff;`
       : `border-color:${lessonColor(l)};background:${lessonBg(l)};color:${lessonColor(l)};`;
-    return `<button class="lbtn${sel?' sel':''}${locked?' locked':''}" style="${style}${locked?'opacity:.5;':''}" onclick="toggleLessonChip(${l})">${locked?'🔒 ':''}Bài ${l}</button>`;
+    return `<button class="lbtn${sel?' sel':''}" style="${style}" onclick="toggleLessonChip(${l})">Bài ${l}</button>`;
   }).join('');
   return `<div style="font-size:.72rem;color:var(--muted);font-weight:700;margin:8px 0 4px;">Chọn bài cụ thể (có thể bỏ tích hết để không chọn bài nào)</div>
     <div id="lesson-filter">${allBtn}${chips}</div>`;

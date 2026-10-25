@@ -298,5 +298,5 @@ function makeQuizOpts(w, pool, opts = {}) {
   return shuffle([w, ...distractors]);
 }
 function rvMakeOpts(w, opts = {}) {
-  return makeQuizOpts(w, WORDS.filter(x => isLoggedIn() || x.l <= GUEST_MAX_LESSON), opts);
+  return makeQuizOpts(w, WORDS, opts);
 }

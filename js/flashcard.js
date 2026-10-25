@@ -102,7 +102,7 @@ let dbHanziParts = {};
 let hanziPartsState = 'idle';
 async function loadHanziParts(attempt) {
   attempt = attempt || 0;
-  if (isGuest || !authToken) return;
+  if (!authToken) return;
   if (hanziPartsState === 'loading') return;
   hanziPartsState = 'loading';
   try {
@@ -153,7 +153,7 @@ function renderHanziParts(hz, expanded, compact) {
     // Chưa có dữ liệu — chỉ báo cho chữ Hán thật sự (bỏ qua số/chữ Latin lẫn trong từ)
     if (!cjk.test(ch)) return '';
     // V118.1: phân biệt 3 tình huống — đang/chưa tải xong, tải lỗi, và máy chủ thật sự chưa có chữ này.
-    if (hanziPartsState !== 'ok' && !isGuest && authToken) {
+    if (hanziPartsState !== 'ok' && authToken) {
       if (hanziPartsState === 'idle' || hanziPartsState === 'failed') loadHanziParts(); // thử lại ngầm, không chặn vẽ
       shorts.push({ ch, s: '<i>đang tải…</i>' });
       return card(ch, '<div class="hp-note hp-empty">⏳ Đang tải chiết tự…</div>');
@@ -172,9 +172,7 @@ function renderHanziParts(hz, expanded, compact) {
 function fcUpdate() {
   sqPersist('flash', fcQueue); // FIX (Bug 2 — session persistence): lưu lại mọi lần vẽ để refresh không mất tiến trình
   if (fcQueue.totalPlanned === 0) {
-    const msg = isLoggedIn()
-      ? '🎉 Không còn thẻ nào đến hạn hoặc từ mới trong ngân sách hôm nay!<br><span style="font-size:.85rem;color:var(--muted)">Vào "🎯 Hôm nay học" để xem/chỉnh giới hạn.</span>'
-      : 'Không có từ nào trong phạm vi bài đang chọn!';
+    const msg = '🎉 Không còn thẻ nào đến hạn hoặc từ mới trong ngân sách hôm nay!<br><span style="font-size:.85rem;color:var(--muted)">Vào "🎯 Hôm nay học" để xem/chỉnh giới hạn.</span>';
     document.getElementById('content').innerHTML = `<div class="panel center" style="padding:40px">${msg}</div>`;
     return;
   }
@@ -334,8 +332,6 @@ async function fcAnswer(ok) {
   if (isLoggedIn()) {
     const selectedAnswer = ok ? w.vi : '⨯ (tự chấm: chưa nhớ) ⨯';
     await submitFsrsReviewAwaited({ word: w, quizType: 'hz2vi', selectedAnswer, responseTimeMs: fcResponseTimeMs });
-  } else {
-    guestMarkActivity();
   }
   fcSubmitting = false;
   if (currentTab !== 'flash' || fcQueue.items[0] !== w) return; // user đã rời tab hoặc hàng đợi đã đổi trong lúc chờ

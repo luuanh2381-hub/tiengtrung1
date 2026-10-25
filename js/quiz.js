@@ -37,7 +37,7 @@ function qzSetType(t) {
 async function qzLoadSentencePool() {
   qzWordExamples = [];
   const lessons = lessonsAllMode ? lessonsOfSelection() : [...selectedLessons];
-  if (!lessons.length || isGuest || !authToken) return;
+  if (!lessons.length || !authToken) return;
   try {
     const res = await fetch('/api/word-examples?lessons=' + lessons.join(','), { headers: authHeaders() });
     const data = await res.json();
@@ -95,9 +95,7 @@ function qzRenderQ() {
   const area = document.getElementById('qz-area');
   if (!area) return;
   if (qzQueue.totalPlanned === 0) {
-    const msg = isLoggedIn()
-      ? '🎉 Không còn thẻ nào đến hạn hoặc từ mới trong ngân sách hôm nay!<br><span style="font-size:.85rem;color:var(--muted)">Vào "🎯 Hôm nay học" để xem/chỉnh giới hạn.</span>'
-      : 'Không có từ nào trong phạm vi bài đang chọn!';
+    const msg = '🎉 Không còn thẻ nào đến hạn hoặc từ mới trong ngân sách hôm nay!<br><span style="font-size:.85rem;color:var(--muted)">Vào "🎯 Hôm nay học" để xem/chỉnh giới hạn.</span>';
     area.innerHTML = `<div class="panel center" style="padding:24px">${msg}</div>`;
     return;
   }
@@ -179,9 +177,6 @@ async function qzPick(btn, hz) {
       submitFsrsReviewAwaited({ word: w, quizType: fsrsQuizTypeFor(qzType), exerciseType: exerciseTypeFor('quiz', qzType), selectedAnswer: btn.dataset.v, responseTimeMs }),
       new Promise(r => setTimeout(r, 1400)),
     ]);
-  } else {
-    guestMarkActivity();
-    await new Promise(r => setTimeout(r, 1400));
   }
   if (currentTab !== 'quiz' || qzQueue.items[0] !== w) return; // user đã rời tab hoặc hàng đợi đã đổi trong lúc chờ
   sqAdvance(qzQueue, isCorrectLocally); qzRenderQ();

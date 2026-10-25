@@ -15,7 +15,7 @@ const SS_TAB_OF_MODE = { flash: 'flash', quiz: 'quiz', type: 'type', listen: 'li
 // Home ("Bắt đầu học nhanh" / "Bắt đầu học" / "Luyện từ hay quên") gọi hàm này thay vì goTab()/
 // startStudySession() thẳng. mode: 'flash'|'quiz'|'type'|'listen'|'review'|'review-weak'.
 function ssEnterMode(mode) {
-  if (!isLoggedIn()) { // khách không có Study Session FSRS thật để "dang dở" — vào thẳng như cũ
+  if (!isLoggedIn()) { // chưa đăng nhập → không có Study Session FSRS thật để "dang dở" — vào thẳng như cũ
     if (mode === 'review' || mode === 'review-weak') startStudySession(mode === 'review-weak', false);
     else goTab(mode);
     return;

@@ -59,9 +59,7 @@ function lsRenderQ() {
   sqPersist('listen', lsQueue, { score: lsScore }); // FIX (Bug 2 — session persistence): lưu lại mọi lần vẽ để refresh không mất tiến trình
   const area = document.getElementById('ls-area'); if(!area) return;
   if (lsQueue.totalPlanned === 0) {
-    const msg = isLoggedIn()
-      ? '🎉 Không còn thẻ nào đến hạn hoặc từ mới trong ngân sách hôm nay!<br><span style="font-size:.85rem;color:var(--muted)">Vào "🎯 Hôm nay học" để xem/chỉnh giới hạn.</span>'
-      : 'Không có từ nào trong phạm vi bài đang chọn!';
+    const msg = '🎉 Không còn thẻ nào đến hạn hoặc từ mới trong ngân sách hôm nay!<br><span style="font-size:.85rem;color:var(--muted)">Vào "🎯 Hôm nay học" để xem/chỉnh giới hạn.</span>';
     area.innerHTML = `<div class="panel center" style="padding:24px">${msg}</div>`; return;
   }
   if (lsQueue.items.length === 0) {
@@ -83,7 +81,7 @@ function lsRenderQ() {
 
 function lsRenderWord(w) {
   const area = document.getElementById('ls-area');
-  const pool = isLoggedIn() ? WORDS.filter(x=>x.hz!==w.hz) : getFilteredWords().filter(x=>x.hz!==w.hz);
+  const pool = WORDS.filter(x=>x.hz!==w.hz);
   // V86: trước đây distractor Nghe hoàn toàn NGẪU NHIÊN (shuffle(pool).slice(0,3)) — giờ dùng
   // Heavy Distractor Engine (js/distractor-engine.js), mode 'listening' ưu tiên NẶNG pinyin/thanh
   // điệu gần nhau (đúng bản chất bài nghe: đầu bài là ÂM THANH, option hiển thị là Hán tự nên vẫn
@@ -123,9 +121,6 @@ async function lsPickWord(btn, chosen, correct) {
       submitFsrsReviewAwaited({ word: w, quizType: fsrsQuizTypeFor('listen'), exerciseType: exerciseTypeFor('listen'), selectedAnswer: chosen, responseTimeMs }),
       new Promise(r => setTimeout(r, 1400)),
     ]);
-  } else {
-    guestMarkActivity();
-    await new Promise(r => setTimeout(r, 1400));
   }
   if (currentTab !== 'listen' || lsQueue.items[0] !== w) return; // user đã rời tab hoặc hàng đợi đã đổi trong lúc chờ
   sqAdvance(lsQueue, isCorrectLocally); lsRenderQ();

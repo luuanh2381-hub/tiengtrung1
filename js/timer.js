@@ -53,7 +53,7 @@ function loadCachedStudySession() {
 // Gọi mỗi khi vào 1 tab học — idempotent: nếu đã có phiên hợp lệ (kể cả vừa khôi phục từ
 // localStorage sau khi reload trang) thì chỉ tiếp tục đếm giờ, KHÔNG tạo phiên mới vô nghĩa.
 async function ensureStudySession() {
-  if (!isLoggedIn()) { pauseStudyTimer(); return; } // khách không có tài khoản → không có phiên thật
+  if (!isLoggedIn()) { pauseStudyTimer(); return; } // chưa đăng nhập → không có phiên thật
   const now = Date.now();
   // Phiên trong bộ nhớ nhưng đã bỏ ngỏ quá 15 phút (tab để mở qua đêm, hoặc vắng lâu) → coi như hết phiên, mở phiên MỚI —
   // khớp quy tắc gộp phiên 15 phút của server; trước đây phiên cũ bị kéo dài vô hạn trong cùng 1 lần mở trang.

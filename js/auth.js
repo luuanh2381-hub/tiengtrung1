@@ -1,10 +1,11 @@
-// js/auth.js — Đăng nhập/đăng ký/khách/đăng xuất, cache tiến độ cục bộ (progressCache_*), đồng bộ progress.ui lên server (scheduleSync)
+// js/auth.js — Đăng nhập/đăng ký/đăng xuất, cache tiến độ cục bộ (progressCache_*), đồng bộ progress.ui lên server (scheduleSync)
 // ════════════════════════════════════════════════════
 // TÀI KHOẢN / ĐỒNG BỘ TIẾN ĐỘ VỚI SERVER
 // ════════════════════════════════════════════════════
 let authToken = localStorage.getItem('authToken') || null;
 let authUsername = localStorage.getItem('authUsername') || null;
-let isGuest = localStorage.getItem('authGuest') === '1';
+// Đã bỏ chức năng dùng thử (khách) — dọn dữ liệu chế độ khách cũ còn sót trong trình duyệt.
+try { localStorage.removeItem('authGuest'); localStorage.removeItem('guestProgress'); } catch {}
 // "ui" lưu lại trạng thái đang thao tác dở (tab đang xem, Quyển/level + bài đang chọn) —
 // được đồng bộ lên server cùng tiến độ học, để mở lại app (kể cả trên máy khác) vẫn đúng chỗ cũ.
 function defaultProgress() {
@@ -141,10 +142,9 @@ async function authSubmit() {
       if (data.registrationClosed) authApplyRegistration(false); // đăng ký vừa bị tắt trong lúc đang mở màn hình
       authShowError(data.error || 'Có lỗi xảy ra'); return;
     }
-    authToken = data.token; authUsername = data.username; isGuest = false;
+    authToken = data.token; authUsername = data.username;
     localStorage.setItem('authToken', authToken);
     localStorage.setItem('authUsername', authUsername);
-    localStorage.removeItem('authGuest');
     studySession = { id: null, startedAt: 0, lastActivity: 0, cards: 0, correct: 0, wrong: 0 }; // Task 4/5: mỗi tài khoản có phiên học riêng, tránh lẫn phiên cũ
     // V77 (Study Day/Study Session): TRƯỚC ĐÂY đăng nhập luôn XOÁ TRẮNG sessionKnownHz — nghĩa là
     // đăng xuất rồi đăng nhập lại CÙNG NGÀY sẽ vô tình cho phép học lại đúng những từ vừa hoàn
@@ -164,6 +164,13 @@ async function authSubmit() {
     cacheProgressLocally();
     closeAuthGate();
     render();
+    // Không còn chế độ dùng thử: từ vựng chỉ tải được SAU khi đăng nhập (cần token) — tải ngay tại đây.
+    if (typeof ensureVocabLoaded === 'function') {
+      ensureVocabLoaded(selectedBookIds).then(() => {
+        if (typeof mergeDiscoveredLessonsIntoBooks === 'function') mergeDiscoveredLessonsIntoBooks();
+        render();
+      });
+    }
   } catch (e) {
     authShowError('Không kết nối được máy chủ. Kiểm tra mạng và thử lại.');
   } finally {
@@ -171,23 +178,8 @@ async function authSubmit() {
   }
 }
 
-function authContinueAsGuest() {
-  isGuest = true;
-  localStorage.setItem('authGuest', '1');
-  authToken = null; authUsername = null;
-  currentRole = 'user'; currentRank = null;
-  pauseStudyTimer(); studySession = { id: null, startedAt: 0, lastActivity: 0, cards: 0, correct: 0, wrong: 0 };
-  _sessionKnownHzDay = todayKey();
-  sessionKnownHz = loadSessionKnownHz(); // V77: nạp đúng "đã hoàn thành hôm nay" của phiên khách (nếu có), không xoá trắng nữa — xem authSubmit
-  localStorage.removeItem('authToken'); localStorage.removeItem('authUsername');
-  progressState = loadGuestProgressLocally();
-  applyUIState();
-  closeAuthGate();
-  render();
-}
-
 function authOpenMenu() {
-  if (isGuest || !authUsername) { openAuthGate(); return; }
+  if (!authUsername) { openAuthGate(); return; }
   document.getElementById('account-menu-name').textContent = '👤 ' + authUsername;
   document.getElementById('account-menu').style.display = 'flex';
 }
@@ -232,7 +224,7 @@ async function submitChangePassword() {
 
 async function authLogout() {
   try { await fetch('/api/logout', { method: 'POST', headers: authHeaders() }); } catch {}
-  authToken = null; authUsername = null; isGuest = false;
+  authToken = null; authUsername = null;
   currentRole = 'user'; currentRank = null;
   serverStreak = 0; serverLongestStreak = 0; serverKnownCount = 0;
   pauseStudyTimer(); studySession = { id: null, startedAt: 0, lastActivity: 0, cards: 0, correct: 0, wrong: 0 };
@@ -243,7 +235,7 @@ async function authLogout() {
   sessionKnownHz = new Set();
   if (typeof wnReset === 'function') wnReset(); // V105: không giữ mẹo nhớ của người vừa đăng xuất
   if (typeof skResetState === 'function') skResetState(); // V104: không giữ số liệu kỹ năng của người vừa đăng xuất
-  localStorage.removeItem('authToken'); localStorage.removeItem('authUsername'); localStorage.removeItem('authGuest');
+  localStorage.removeItem('authToken'); localStorage.removeItem('authUsername');
   progressState = defaultProgress();
   applyUIState();
   openAuthGate();
@@ -262,7 +254,7 @@ function openAuthGate() {
 function closeAuthGate() {
   document.getElementById('auth-gate').style.display = 'none';
   updateUserBadge();
-  const showAdmin = (!isGuest && isAdminRole()) ? '' : 'none';
+  const showAdmin = isAdminRole() ? '' : 'none';
   document.getElementById('tab-admin').style.display = showAdmin;
   document.getElementById('tab-vocab').style.display = showAdmin;
   const ab = document.getElementById('tab-aibank'); if (ab) ab.style.display = showAdmin; // V119.2: Thư viện AI chỉ cho quản trị viên
@@ -270,18 +262,11 @@ function closeAuthGate() {
 function updateUserBadge() {
   const badge = document.getElementById('user-badge');
   if (!badge) return;
-  if (isGuest) { badge.innerHTML = '👤 Khách (chỉ lưu máy này)'; return; }
   const rankIcon = currentRank ? currentRank.icon + ' ' : '';
   badge.innerHTML = rankIcon + '👤 ' + authUsername + (currentRole === 'superadmin' ? ' 👑🛠️' : currentRole === 'admin' ? ' 🛠️' : '');
 }
 
-// Khách (không đăng nhập): vẫn lưu localStorage như trước, riêng theo trình duyệt
-function loadGuestProgressLocally() {
-  try { return JSON.parse(localStorage.getItem('guestProgress') || 'null') || { srs: {}, streak: 0, lastDate: null }; }
-  catch { return { srs: {}, streak: 0, lastDate: null }; }
-}
 function cacheProgressLocally() {
-  if (isGuest) { localStorage.setItem('guestProgress', JSON.stringify(progressState)); return; }
   if (authUsername) {
     localStorage.setItem('progressCache_' + authUsername, JSON.stringify(progressState));
     localStorage.setItem('roleCache_' + authUsername, currentRole || 'user');
@@ -290,7 +275,7 @@ function cacheProgressLocally() {
 
 // Đồng bộ lên server (gộp các lần lưu liên tiếp trong 700ms để đỡ tốn request)
 function scheduleSync() {
-  if (isGuest || !authToken) return;
+  if (!authToken) return;
   syncOk = null; updateSyncIndicator();
   clearTimeout(syncTimer);
   syncTimer = setTimeout(async () => {
@@ -309,7 +294,7 @@ function scheduleSync() {
 }
 function updateSyncIndicator() {
   const badge = document.getElementById('user-badge');
-  if (!badge || isGuest || !authUsername) return;
+  if (!badge || !authUsername) return;
   const dot = syncOk === false ? '<span class="sync-dot offline"></span>' : (syncOk === null ? '' : '<span class="sync-dot"></span>');
   const rankIcon = currentRank ? currentRank.icon + ' ' : '';
   badge.innerHTML = dot + rankIcon + '👤 ' + authUsername + (currentRole === 'superadmin' ? ' 👑🛠️' : currentRole === 'admin' ? ' 🛠️' : '');
@@ -324,7 +309,7 @@ function updateSyncIndicator() {
 // trước khi truy vấn bất kỳ dữ liệu học nào phụ thuộc vào nó (gọi ở loadFsrsPracticePool() và
 // rvFetchFreshSession() ngay trước khi fetch /api/study/session).
 async function flushProgressSync() {
-  if (isGuest || !authToken) return;
+  if (!authToken) return;
   clearTimeout(syncTimer);
   syncOk = null; updateSyncIndicator();
   try {
@@ -344,12 +329,6 @@ async function flushProgressSync() {
 // (không phải đợi mạng phản hồi mới cho vào — đây là nguyên nhân gây ra màn hình đăng nhập
 // hiện thoáng qua vài giây mỗi lần mở app), rồi âm thầm đồng bộ lại với server phía sau.
 async function bootAuth() {
-  if (isGuest) {
-    progressState = loadGuestProgressLocally();
-    applyUIState();
-    closeAuthGate();
-    return;
-  }
   if (authToken && authUsername) {
     flushReviewOutbox(); // FIX (Task 3): tự gửi lại review còn kẹt trong outbox từ phiên trước (F5/mất mạng/đóng tab)
     const cachedRaw = localStorage.getItem('progressCache_' + authUsername);
@@ -410,35 +389,19 @@ async function bootAuth() {
 //   - User ĐÃ ĐĂNG NHẬP: streak/known/độ ưu tiên từ đến hạn... đều lấy từ SERVER (FSRS-6 thật,
 //     reviewService + fsrs_cards + review_history + study_sessions) — xem serverStreak/
 //     serverKnownCount bên dưới + loadFsrsPracticePool()/submitFsrsReview() dùng ở các tab luyện tập.
-//   - KHÁCH (chưa đăng nhập): KHÔNG có tài khoản nên không thể có thẻ FSRS thật trên server. Giữ
-//     lại 1 cơ chế cực tối giản CHỈ để tính streak hiển thị cục bộ trên máy khách đó (không giả vờ
-//     đây là spaced-repetition thật) — xem guestMarkActivity() bên dưới.
+//   - Không còn chế độ dùng thử/khách: chưa đăng nhập thì chỉ thấy màn hình đăng nhập.
 // ════════════════════════════════════════════════════
 let serverStreak = 0, serverLongestStreak = 0, serverKnownCount = 0;
 
-// Streak hiển thị: user thật → số streak SERVER tính (từ study_sessions thật, Phần 11 Task 6);
-// khách → đếm cục bộ đơn giản, chỉ để có con số vui mắt, không phải dữ liệu học tập thật.
-function getStreak() { return isGuest ? (progressState.streak || 0) : serverStreak; }
-
-// Chỉ dùng cho KHÁCH: đánh dấu "hôm nay có luyện tập" để tăng streak hiển thị cục bộ. Không tạo
-// thẻ SRS/step nào cả — khách luyện Flashcard/Trắc nghiệm/Gõ chữ/Nghe-chọn chỉ để thử, không có
-// lịch ôn tập thật (cần đăng nhập mới có FSRS thật, xem app.js `renderToday`).
-function guestMarkActivity() {
-  if (!isGuest) return;
-  const today = new Date().toDateString();
-  if (progressState.lastDate === today) return;
-  const yesterday = new Date(Date.now() - 86400000).toDateString();
-  progressState.streak = (progressState.lastDate === yesterday) ? (progressState.streak || 0) + 1 : 1;
-  progressState.lastDate = today;
-  cacheProgressLocally();
-}
+// Streak hiển thị: số streak SERVER tính (từ study_sessions thật, Phần 11 Task 6).
+function getStreak() { return serverStreak; }
 
 // Gọi lại /api/progress để làm mới streak/known thật sau khi vừa hoàn thành 1 lượt/1 phiên luyện
 // tập ở BẤT KỲ tab nào (Task 2: mọi tab đều là "nguồn sự thật" như nhau) — không gọi sau MỖI câu
 // trả lời (tốn request), chỉ gọi khi kết thúc 1 phiên/1 thẻ để badge không bị cũ quá lâu.
 let _refreshMetaTimer = null;
 function refreshServerMeta() {
-  if (isGuest || !authToken) return;
+  if (!authToken) return;
   // AUDIT V82: xoá cache /api/study/today (lesson.js:fetchTodayDashboard) NGAY khi có phiên vừa
   // hoàn thành — nếu không, khối "at a glance" ở Trang chủ/tab "Hôm nay học" có thể hiện due/mới
   // CŨ tới 10s sau khi vừa học xong (TODAY_DASH_CACHE_TTL_MS), gây cảm giác số liệu "đứng hình".

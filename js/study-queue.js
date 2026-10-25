@@ -29,7 +29,9 @@ async function loadFsrsPracticePool(limit) {
     // (đã bị chặn ở mức ngân sách/ngày phía server rồi nên không quá lớn), để sqLoad() lọc
     // sessionKnownHz xong MỚI cắt đúng limit — thứ tự lọc-rồi-cắt, không phải cắt-rồi-lọc.
     const words = (data.session || []).map(it => it.word);
-    return { words, blockedByBacklog: !!data.blockedByBacklog, totalDue: data.totalDue || 0 };
+    // FIX V124: báo cho sqLoad biết từ nào là TỪ MỚI (chưa có lịch sử FSRS) để chừa chỗ cho chúng.
+    const newHz = new Set((data.session || []).filter(it => it.type === 'new').map(it => it.word.hz));
+    return { words, newHz, blockedByBacklog: !!data.blockedByBacklog, totalDue: data.totalDue || 0 };
   } catch (e) {
     return { words: [], error: e.message };
   }
@@ -338,7 +340,7 @@ async function submitSkillPractice({ word, exerciseType, selectedAnswer, respons
 // sqLoad() MỌI LẦN được gọi, kể cả khi chỉ đơn giản rời tab rồi quay lại giữa phiên đang học dở —
 // làm mất hẳn trạng thái chống lặp cũ. sessionKnownHz dưới đây là 1 Set DÙNG CHUNG cho TẤT CẢ tab
 // (kể cả "Hôm nay học", xem rvDedupeSession/rvAdvance ở review.js), tồn tại suốt phiên đăng nhập
-// hiện tại (reset khi đăng nhập/vào khách/đăng xuất — xem auth.js): hz nào đã trả lời ĐÚNG ở BẤT
+// hiện tại (reset khi đăng nhập/đăng xuất — xem auth.js): hz nào đã trả lời ĐÚNG ở BẤT
 // KỲ tab nào thì bị loại khỏi TẤT CẢ hàng đợi khác cho tới khi phiên kết thúc. Không đụng tới logic
 // FSRS thật (due/stability/difficulty) — chỉ lọc phía client trước khi hiển thị.
 // ════════════════════════════════════════════════════
@@ -533,14 +535,6 @@ async function sqAdjustLimit(sq, newLimit) {
   }
   const currentHz = new Set(sq.items.map(w => w.hz));
   const stillNeeded = remainingWanted - sq.items.length;
-  if (!isLoggedIn()) {
-    const extra = sqDedupeByHz(shuffle(getFilteredWords()))
-      .filter(w => !sessionKnownHz.has(w.hz) && !currentHz.has(w.hz))
-      .slice(0, stillNeeded);
-    sq.items = sq.items.concat(extra);
-    sq.totalPlanned = sq.answeredCount + sq.items.length;
-    return { ok: true };
-  }
   const { words, error } = await loadFsrsPracticePool(remainingWanted + sq.answeredCount);
   if (error) return { error };
   const extra = sqDedupeByHz(words).filter(w => !sessionKnownHz.has(w.hz) && !currentHz.has(w.hz)).slice(0, stillNeeded);
@@ -642,7 +636,7 @@ function sqInvalidateQueuesForSelectionChange() {
 }
 
 // Nạp hàng đợi 1 LẦN cho 1 lượt "vào tab" — dùng chung bởi mọi tab luyện tập (đăng nhập: FSRS
-// thật qua loadFsrsPracticePool; khách: pool cục bộ theo bài đang chọn). V74: lọc thêm
+// thật qua loadFsrsPracticePool). V74: lọc thêm
 // sessionKnownHz để không nạp lại từ vừa trả lời ĐÚNG ở 1 tab KHÁC trong cùng phiên.
 // V77 (Yêu cầu 1/5/8): opts.ignoreDayDedupe (mặc định false) — CHỈ true khi gọi từ
 // sqRelearnFromStart() ("Học lại từ đầu", hành động TƯỜNG MINH do user chủ động bấm) — bỏ qua lọc
@@ -656,13 +650,24 @@ async function sqLoad(sq, limit, opts) {
   sq.dayKey = todayKey(); sq.lessonFilter = sqSnapshotLessonFilter();
   const dedupeSet = ignoreDayDedupe ? new Set() : sessionKnownHz;
   if (isLoggedIn()) {
-    const { words, error } = await loadFsrsPracticePool(limit);
+    const { words, newHz, error } = await loadFsrsPracticePool(limit);
     if (error) return { error };
     // FIX (Bug 2 — thứ tự lọc/cắt): lọc sessionKnownHz TRƯỚC, cắt limit SAU (xem loadFsrsPracticePool
     // ở trên — trước đây cắt limit TRƯỚC khi lọc, có thể làm hàng đợi trống oan dù server còn thẻ).
-    sq.items = sqDedupeByHz(words).filter(w => !dedupeSet.has(w.hz)).slice(0, limit);
-  } else {
-    sq.items = sqDedupeByHz(shuffle(getFilteredWords())).filter(w => !dedupeSet.has(w.hz)).slice(0, limit);
+    const pool = sqDedupeByHz(words).filter(w => !dedupeSet.has(w.hz));
+    // FIX V124: server trả thẻ đến hạn TRƯỚC, từ mới SAU; cắt thẳng `slice(0, limit)` làm từ mới (chưa có lịch sử
+    // FSRS) KHÔNG BAO GIỜ được lấy khi số thẻ đến hạn ≥ limit. Chừa ~1/4 chỗ cho từ mới (nếu có), phần còn lại giữ
+    // đúng thứ tự FSRS (đến hạn trước); thiếu từ mới thì thẻ đến hạn lấp đầy như cũ.
+    const newPool = pool.filter(w => newHz && newHz.has(w.hz));
+    if (newPool.length && pool.length > limit) {
+      const duePool = pool.filter(w => !newHz.has(w.hz));
+      const reserve = Math.min(newPool.length, Math.max(1, Math.floor(limit / 4)));
+      sq.items = duePool.slice(0, Math.max(0, limit - reserve)).concat(newPool.slice(0, reserve));
+      const rest = limit - sq.items.length; // thiếu thẻ đến hạn → bù thêm từ mới
+      if (rest > 0) sq.items = sq.items.concat(newPool.slice(reserve, reserve + rest));
+    } else {
+      sq.items = pool.slice(0, limit);
+    }
   }
   sq.totalPlanned = sq.items.length;
   return { ok: true };
@@ -702,7 +707,7 @@ function sqHasDanglingSession(mode) {
   return !!(saved && saved.items && saved.items.length > 0 && saved.answeredCount > 0 && sqLessonFilterMatches(saved.lessonFilter));
 }
 
-// Gọi SAU KHI có kết quả (server hoặc tự chấm ở khách) cho thẻ đang ở ĐẦU hàng đợi.
+// Gọi SAU KHI có kết quả (kết quả server) cho thẻ đang ở ĐẦU hàng đợi.
 function sqAdvance(sq, isCorrect) {
   const w = sq.items.shift();
   if (!w) return;

@@ -122,7 +122,7 @@ async function bindStats() {
     // ── Bar chart: tiến độ từ vựng theo bài (đúng phạm vi Quyển/bài đang chọn) ──
     const barsEl = document.getElementById('dash-bars');
     if (barsEl) {
-      const lessonsForBars = isLoggedIn() ? statLessons : statLessons.filter(l => l <= GUEST_MAX_LESSON);
+      const lessonsForBars = statLessons;
       barsEl.innerHTML = lessonsForBars.length ? lessonsForBars.map(l => {
         const total = WORDS.filter(w => w.l === l).length || 1;
         const known = knownByLesson[l] || 0;
@@ -311,7 +311,7 @@ function formatRelativeTime(iso) {
 function renderDifficult() {
   if (!isLoggedIn()) {
     return `<div class="panel">
-      <div class="study-empty">🔒 Cần đăng nhập để xem từ khó thật (dữ liệu lấy từ lịch sử học của tài khoản, không có ở chế độ khách).</div>
+      <div class="study-empty">🔒 Cần đăng nhập để xem từ khó thật (dữ liệu lấy từ lịch sử học của tài khoản).</div>
     </div>`;
   }
   return `<div class="panel">

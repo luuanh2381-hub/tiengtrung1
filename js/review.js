@@ -124,7 +124,7 @@ function rvNormalizeIntroFlags(items, log) {
 
 function rvQCtx() {
   return {
-    pool: WORDS.filter(x => isLoggedIn() || x.l <= GUEST_MAX_LESSON),
+    pool: WORDS,
     examples: rvExamplePool,
     sentences: (typeof SENTENCES !== 'undefined') ? SENTENCES : [],
     confuseGroups: (typeof CONFUSE_GROUPS !== 'undefined') ? CONFUSE_GROUPS : [],
@@ -345,7 +345,18 @@ async function startStudySession(weakMode, forceNew) {
   // phần bị cắt vẫn còn nguyên trên server (chưa trả lời nên chưa bị trừ ngân sách ngày) và "Học tiếp" sẽ lấy tiếp.
   const cap = rvSessionCards();
   if (cap > 0 && !rvWeakMode && list.length > cap) {
-    list = list.slice(0, cap);
+    // FIX V124: cắt thẳng phần cuối làm TỪ MỚI (xếp sau thẻ đến hạn) không bao giờ vào phiên khi thẻ đến hạn ≥ cap.
+    // Chừa ~1/4 chỗ cho từ mới; phần còn lại giữ đúng thứ tự FSRS. Thiếu thẻ đến hạn thì từ mới lấp đầy như cũ.
+    const newList = list.filter(it => it.type === 'new');
+    if (newList.length && newList.length < list.length) {
+      const dueList = list.filter(it => it.type !== 'new');
+      const reserve = Math.min(newList.length, Math.max(1, Math.floor(cap / 4)));
+      let picked = dueList.slice(0, Math.max(0, cap - reserve)).concat(newList.slice(0, reserve));
+      if (cap - picked.length > 0) picked = picked.concat(newList.slice(reserve, reserve + (cap - picked.length)));
+      list = picked;
+    } else {
+      list = list.slice(0, cap);
+    }
     reviewCount = list.filter(it => it.type === 'review').length;
     newCount = list.filter(it => it.type === 'new').length;
   }
@@ -363,7 +374,7 @@ async function startStudySession(weakMode, forceNew) {
   rvQueue.totalPlanned = sessionItems.filter(rvIsOfficial).length;
   // Nạp trước kho ví dụ cho các bài xuất hiện trong session (Phần 24) — không chặn hiển thị.
   const lessonsInSession = [...new Set(rvQueue.items.filter(it => it.word).map(it => it.word.l))];
-  if (lessonsInSession.length && !isGuest && authToken) {
+  if (lessonsInSession.length && authToken) {
     fetch('/api/word-examples?lessons=' + lessonsInSession.join(','), { headers: authHeaders() })
       .then(r => r.json()).then(d => { if (d.ok) rvExamplePool = d.examples || []; })
       .catch(() => {});
@@ -1035,7 +1046,7 @@ function renderReview() {
       ${(ex && !(rvQuestion && rvQuestion.typeId === 'cloze')) ? `<div class="rv-ex">${ex.zh}<br><span style="color:var(--muted);font-size:.85rem;">${ex.vi}</span></div>` : ''}
       ${rvRenderRatingBar()}
       ${savedLine}
-      ${(!isGuest && isAdminRole() && r && r.autoRating) ? `<div class="rv-saved-line">🐞 debug: auto rating = ${r.autoRating}</div>` : ''}`;
+      ${(isAdminRole() && r && r.autoRating) ? `<div class="rv-saved-line">🐞 debug: auto rating = ${r.autoRating}</div>` : ''}`;
   }
   // V117: thay thanh tiến độ bằng 1 dòng chữ "Từ mới 2/70 · Ôn 20/30" để nhường chỗ cho vùng học.
   // Đã xong = tổng dự kiến (rvSummary) − số thẻ chính thức CÒN trong hàng đợi (thẻ sai quay lại hàng đợi vẫn tính 1 lần;
@@ -1317,7 +1328,7 @@ function rvAdvanceQueue() {
 // Giới hạn: ≤ 25% số thẻ chính thức (tối thiểu 1 khi buổi có ≥4 thẻ), ≤ RV_EXTRA_MAX. KHÔNG thay thế và KHÔNG
 // chen lên trước thẻ FSRS nào: thẻ chính thức giữ nguyên thứ tự, extra chỉ xen vào giữa.
 async function rvFetchWeakWords(limit) {
-  if (isGuest || !authToken) return [];
+  if (!authToken) return [];
   try {
     const audio = (typeof skillAudioAvailable === 'function' && skillAudioAvailable()) ? 1 : 0;
     const res = await fetch(`/api/skills/practice-words?skill=mixed&weakOnly=1&limit=${limit}&allowListening=${audio}`, { headers: authHeaders() });
@@ -1335,7 +1346,7 @@ async function rvAddExtras(items) {
   const inQueue = new Set(items.map(i => i.word.hz));
   const extras = [];
   for (const r of rows) {
-    if (inQueue.has(r.hz) || extras.length >= cap) continue;
+    if (inQueue.has(r.hz) || sessionKnownHz.has(r.hz) || extras.length >= cap) continue; // FIX V123: không chèn lại từ đã trả lời ĐÚNG hôm nay
     const w = rvWordOf(r); if (!w) continue;
     inQueue.add(r.hz);
     extras.push({ type: 'extra', word: w, targetSkill: r.skill });

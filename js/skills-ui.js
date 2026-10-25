@@ -190,7 +190,7 @@ function skRenderTrend() {
 let skExamples = [];
 function skQCtx() {
   return {
-    pool: WORDS.filter(x => isLoggedIn() || x.l <= GUEST_MAX_LESSON),
+    pool: WORDS,
     examples: skExamples,
     sentences: (typeof SENTENCES !== 'undefined') ? SENTENCES : [],
     confuseGroups: (typeof CONFUSE_GROUPS !== 'undefined') ? CONFUSE_GROUPS : [],
@@ -202,7 +202,7 @@ function skTypesFor(skill) { return QE.MCQ_ORDER.concat(rvTypedEnabled() ? QE.TY
 
 async function skLoadExamplesFor(words) {
   const lessons = [...new Set(words.map(w => w.l))];
-  if (!lessons.length || isGuest) { skExamples = []; return; }
+  if (!lessons.length || !authToken) { skExamples = []; return; }
   try {
     const res = await fetch('/api/word-examples?lessons=' + lessons.join(','), { headers: authHeaders() });
     const d = await res.json().catch(() => null);

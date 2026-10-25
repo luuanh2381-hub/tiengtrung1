@@ -49,8 +49,7 @@ async function loadBookDefs() {
 let loadedLessonNumbers = new Set();
 
 // Tải về ĐÚNG phần từ vựng cần cho các Quyển/level đang chọn (thay vì tải hết mọi thứ).
-// Toàn bộ từ vựng giờ nạp từ database, kể cả Quyển 1/2 — khách (chưa đăng nhập) dùng API công khai
-// riêng, server tự giới hạn chỉ được Bài 1-5 (giới hạn dùng thử của khách).
+// Toàn bộ từ vựng nạp từ database, kể cả Quyển 1/2 — CHỈ tải được khi đã đăng nhập (cần token).
 async function ensureVocabLoaded(bookIds) {
   const needed = [];
   for (const id of bookIds) {
@@ -64,11 +63,10 @@ async function ensureVocabLoaded(bookIds) {
     }
   }
   if (needed.length === 0) return;
-  const url = (isGuest || !authToken)
-    ? '/api/vocab/public?lessons=' + needed.join(',')
-    : '/api/vocab?lessons=' + needed.join(',');
+  if (!authToken) return; // chưa đăng nhập → chưa tải (đăng nhập xong sẽ tải lại, xem authSubmit)
+  const url = '/api/vocab?lessons=' + needed.join(',');
   try {
-    const res = await fetch(url, (isGuest || !authToken) ? {} : { headers: authHeaders() });
+    const res = await fetch(url, { headers: authHeaders() });
     const data = await res.json();
     if (data.ok && Array.isArray(data.vocab)) {
       const seen = new Set(WORDS.map(w => w.hz + '-' + w.l));
@@ -87,12 +85,12 @@ async function ensureVocabLoaded(bookIds) {
 }
 
 // Nếu máy đã có cache tiến độ từ lần trước (trường hợp phổ biến nhất: mở lại app đã đăng nhập
-// rồi) hoặc đang ở chế độ khách, bootAuth() sẽ khôi phục selectedBookIds NGAY LẬP TỨC (đồng bộ,
+// rồi), bootAuth() sẽ khôi phục selectedBookIds NGAY LẬP TỨC (đồng bộ,
 // trước khi có await nào chạy) — nên có thể bắt đầu tải từ vựng SONG SONG với việc xác thực lại
 // token với server, thay vì đợi round-trip xác thực xong mới bắt đầu tải như trước (tốn thêm hẳn
 // 1 lượt đi-về mạng mỗi lần mở app). Chỉ trường hợp lần đầu đăng nhập trên máy này (chưa có cache)
 // mới cần đợi bootAuth xong để biết đúng Quyển/bài đã chọn trước khi tải.
-const hasCachedProgress = isGuest || (authToken && authUsername && !!localStorage.getItem('progressCache_' + authUsername));
+const hasCachedProgress = !!(authToken && authUsername && localStorage.getItem('progressCache_' + authUsername));
 const bootPromise = bootAuth();
 // V102: loadBookDefs() PHẢI xong TRƯỚC ensureVocabLoaded (đọc BOOKS để biết bài nào cần tải) — nếu
 // Quyển đang chọn là 1 Quyển tự khai báo (id >= 3000) mà BOOKS chưa kịp gộp thêm, ensureVocabLoaded
