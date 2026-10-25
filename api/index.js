@@ -2779,7 +2779,12 @@ async function runWordExampleGeneration(timeBudgetMs) {
   const allWords = await getAllVocabWords();
   const existing = await getWordExampleCounts();
   // Bỏ qua từ đã đủ ví dụ, xử lý theo đúng thứ tự bài rồi tới thứ tự từ trong bài
-  const pending = allWords.filter(w => (existing[w.hz + '-' + w.l] || 0) < TARGET_EXAMPLES_PER_WORD);
+  const seenHz = new Set();
+  const pending = allWords.filter(w => {
+    if (seenHz.has(w.hz)) return false; // 1 chữ Hán chỉ xử lý 1 lần dù thuộc nhiều bài
+    seenHz.add(w.hz);
+    return (existing[w.hz] || 0) < TARGET_EXAMPLES_PER_WORD;
+  });
   let batches = 0, wordsDone = 0, wordsRetried = 0, errors = 0;
   const errorSamples = []; // vài lỗi mẫu (không lặp lại thông điệp) để hiện chi tiết cho admin xem
 
@@ -3060,8 +3065,9 @@ app.get('/api/admin/word-examples/progress', async (req, res) => {
   try {
     const allWords = await getAllVocabWords();
     const counts = await getWordExampleCounts();
-    const total = allWords.length;
-    const done = allWords.filter(w => (counts[w.hz + '-' + w.l] || 0) >= TARGET_EXAMPLES_PER_WORD).length;
+    const uniqueHz = [...new Set(allWords.map(w => w.hz))];
+    const total = uniqueHz.length;
+    const done = uniqueHz.filter(hz => (counts[hz] || 0) >= TARGET_EXAMPLES_PER_WORD).length;
     res.json({ ok: true, total, done });
   } catch (e) { fail(res, e); }
 });
