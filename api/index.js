@@ -720,7 +720,8 @@ app.get('/api/study/session', async (req, res) => {
   try {
     const user = authed.db.users[authed.username];
     const ui = (user.progress && user.progress.ui) || {};
-    const result = await reviewService.getStudySession(authed.username, ui);
+    // V127: chỉ màn "Hôm nay học" gửi ?adaptive=1 để nhận thêm số liệu người học + dạng câu hỏi lần trước (các tab luyện khác không tốn thêm truy vấn).
+    const result = await reviewService.getStudySession(authed.username, ui, { adaptive: req.query && req.query.adaptive === '1' });
     res.json({ ok: true, ...result });
   } catch (e) { fail(res, e); }
 });
