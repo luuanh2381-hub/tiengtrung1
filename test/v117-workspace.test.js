@@ -230,6 +230,7 @@ function reviewEnv(extra) {
     console, Math, Date, JSON, Set, Map, Array, Object, String, Number, Promise, Error, setTimeout: () => 0, clearInterval() {}, setInterval: () => 0,
     document: doc, performance: { now: () => 0 }, WORDS: POOL, GUEST_MAX_LESSON: 99, isLoggedIn: () => true, isGuest: false, authToken: 't', authHeaders: () => ({}),
     SENTENCES: [], CONFUSE_GROUPS: [], showPinyin: true, showMeaning: true, showHanViet: true, isAdminRole: () => false, currentTab: 'review',
+    lessonName: l => 'Bài ' + l,
     escapeHtml: s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
     escapeJsAttr: s => String(s).replace(/'/g, "\\'"), renderHanziParts: () => '', lessonsLabel: () => 'Bài 5', skillAudioAvailable: () => true, vtMarkStart() {}, vtHiddenMs: () => 0,
     render() {}, speak() {}, playDing() {}, playBuzz() {},

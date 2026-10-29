@@ -45,7 +45,7 @@ function makeEnv(opts) {
     WORDS: opts.words || POOL, GUEST_MAX_LESSON: 99, isLoggedIn: () => true, isGuest: false, authToken: 't', authHeaders: () => ({}),
     SENTENCES: [], CONFUSE_GROUPS: [],
     skillAudioAvailable: () => opts.audio !== false,
-    performance: { now: () => 0 }, vtMarkStart() {}, vtHiddenMs: () => 0, render() {},
+    setTimeout, performance: { now: () => 0 }, vtMarkStart() {}, vtHiddenMs: () => 0, render() {},
     sessionKnownHz: new Set(), saveSessionKnownHz() {}, sqPurgeHzFromAllQueues: (hz) => log.purged.push(hz),
     REPEAT_GAP: 3, currentTab: 'review', ssArchiveSession() { log.archived++; }, refreshServerMeta() {}, sqClearPersisted() {},
     sqPersist: (k, q, extra) => log.persisted.push({ items: q.items.length, extra }), rvStorageMode: () => 'review',
@@ -63,24 +63,25 @@ function makeEnv(opts) {
   vm.runInContext(read('js/session-summary.js'), ctx); // V118: tổng kết + trần luyện lại
   vm.runInContext(read('js/question-engine.js'), ctx);
   vm.runInContext(read('js/question-selector.js'), ctx);
-  const consts = ['RV_AUTO_COMMIT_MS', 'RV_NEW_GAP', 'RV_DRILL_GAP', 'RV_DRILL_MAX_TRIES', 'RV_EXTRA_MAX', 'RV_PRACTICE_TYPES', 'RV_CORRECTION_GAP'].map(constLine).join('\n'); // V115: rvAdvanceQueue dùng RV_CORRECTION_GAP
+  const consts = ['RV_AUTO_COMMIT_MS', 'RV_NEW_GAP', 'RV_DRILL_GAP', 'RV_DRILL_MAX_TRIES', 'RV_EXTRA_MAX', 'RV_PROBE_MAX', 'RV_PRACTICE_TYPES', 'RV_CORRECTION_GAP'].map(constLine).join('\n'); // V115: rvAdvanceQueue dùng RV_CORRECTION_GAP
   const fns = ['rvIsPractice', 'rvIsOfficial', 'rvIsIntroExposure', 'rvQCtx', 'rvSkillTypes', 'rvTypedEnabled', 'rvPracticeSource', // V110: rvBuildQuestionFor/rvPickPractice gọi 2 hàm này
      'rvBuildQuestionFor', 'rvStageLabel', 'rvRecordAnswer', 'rvRestoreQSession', 'rvBaseAutoMs', // V117: rvPickPractice dùng rvBaseAutoMs
    
-    'rvPrepareCurrentCard', 'rvIntroDone', 'rvAdvanceQueue', 'rvFetchWeakWords', 'rvWordOf', 'rvAddExtras', 'rvInsertMatch', 'rvBuildStartInfo',
+    'rvPrepareCurrentCard', 'rvIntroDone', 'rvAdvanceQueue', 'rvFetchWeakWords', 'rvFetchProbeWords', 'rvLoadExamples', 'rvWordOf', 'rvAddExtras', 'rvInsertMatch', 'rvBuildStartInfo',
     'rvSummaryHtml', 'rvBeginPracticeOnly', 'rvStartRedoWrong', 'rvStartWeakPractice', 'rvPickPractice', 'rvMatchPick', 'rvMatchFinish', 'rvMatchContinue', 'rvPracticeContinue'].map(grab).join('\n');
   const prelude = `
     let rvQueue = sqCreate(), rvQuestion = null, rvQSession = QS.newSession(), rvLog = [], rvStage = 'run', rvStartInfo = null, rvMatch = null,
         rvPhase = 'question', rvLastAnswer = null, rvAnswerChanges = 0, rvRatingPhase = null, rvSystemRating = null, rvUserRating = null,
-        rvFinalRating = null, rvPendingReview = null, rvStartedAt = 0, rvExamplePool = [], rvSummary = { reviewCount: 0, newCount: 0 },
+        rvFinalRating = null, rvPendingReview = null, rvStartedAt = 0, rvExamplePool = [], rvLearner = null, rvSummary = { reviewCount: 0, newCount: 0 }, // V127: rvLearner
         rvWeakMode = false, rvBlockedByBacklog = false, rvTotalDue = 0, rvAttemptId = 0, rvSubmitting = false, rvCardSeq = 0; // V117: rvCardSeq
     ${consts}
     ${fns}
     globalThis.__env = { get q() { return rvQueue; }, set q(v) { rvQueue = v; }, get log() { return rvLog; }, set log(v) { rvLog = v; },
       get question() { return rvQuestion; }, get phase() { return rvPhase; }, set phase(v) { rvPhase = v; },
       get last() { return rvLastAnswer; }, set last(v) { rvLastAnswer = v; }, get qs() { return rvQSession; },
+      get learner() { return rvLearner; }, set learner(v) { rvLearner = v; }, get pool() { return rvExamplePool; },
       get stage() { return rvStage; }, get match() { return rvMatch; }, set summary(v) { rvSummary = v; },
-      f: { rvPrepareCurrentCard, rvIntroDone, rvAdvanceQueue, rvAddExtras, rvInsertMatch, rvBuildStartInfo, rvSummaryHtml, rvRecordAnswer,
+      f: { rvLoadExamples, rvPrepareCurrentCard, rvIntroDone, rvAdvanceQueue, rvAddExtras, rvInsertMatch, rvBuildStartInfo, rvSummaryHtml, rvRecordAnswer,
            rvRestoreQSession, rvStartRedoWrong, rvStartWeakPractice, rvBuildQuestionFor, rvIsOfficial, rvIsPractice, rvMatchPick, rvMatchContinue, rvBeginPracticeOnly } };`;
   vm.runInContext(prelude, ctx);
   return { ctx, log, env: ctx.__env, f: ctx.__env.f };
@@ -258,6 +259,85 @@ test('Màn bắt đầu: số liệu THẬT (từ mới, đến hạn, từ hay 
   assert.strictEqual(info.newCount, 2); assert.strictEqual(info.reviewCount, 1); assert.strictEqual(info.extraCount, 1);
   assert.strictEqual(info.estimated, 1 + 2 * 2 + 1 + 1);
   assert.deepStrictEqual(Array.from(info.lessons), [...new Set([POOL[0].l, POOL[1].l, POOL[2].l])].sort((a, b) => a - b));
+});
+
+console.log('\n[3b] V127: câu thăm dò NHỚ CHỦ ĐỘNG (tự gõ) + nạp kho ví dụ');
+const LEARNER_PROBE = { v: 1, skills: { recall: { c: { n: 60, ok: 54 }, t: { n: 0, ok: 0 }, rc: { n: 0, ok: 0 }, rt: { n: 0, ok: 0 } } } }; // chọn đúng 90% nhưng chưa có lượt tự gõ nào
+const probeFetch = (urls, weakHz, probeHz) => async (u) => {
+  urls.push(u);
+  if (/skill=recall/.test(u)) return { json: async () => ({ ok: true, words: probeHz.map(hz => { const w = POOL.find(x => x.hz === hz); return { hz, l: w.l, skill: 'recall', score: null, attempts: 0, priority: 1 }; }) }) };
+  return { json: async () => ({ ok: true, words: weakRows(weakHz) }) };
+};
+const OFFICIAL8 = () => ['认真', '准备', '参加', '发现', '学习', '学校', '学生', '休息'].map(h => item(h === '认真' ? 'new' : 'review', h));
+test('rvAddExtras: nhận diện vững + chưa có bằng chứng tự gõ → dành 1 chỗ cho câu thăm dò tự gõ; thẻ FSRS giữ nguyên thứ tự', async () => {
+  const urls = []; const E = makeEnv({ fetch: probeFetch(urls, ['汤', '包子'], ['电影', '音乐']) });
+  E.env.learner = LEARNER_PROBE;
+  const official = OFFICIAL8();
+  const out = await E.f.rvAddExtras(official);
+  const extras = out.items.filter(i => i.type === 'extra');
+  assert.strictEqual(extras.length, 2); // cap = 2: 1 từ yếu + 1 thăm dò
+  assert.strictEqual(extras.filter(i => i.probe === 'typed').length, 1);
+  assert.ok(extras.filter(i => i.probe === 'typed').every(i => i.targetSkill === 'recall'));
+  assert.ok(urls.some(u => /skill=recall&weakOnly=0/.test(u)) && urls.some(u => /weakOnly=1/.test(u)));
+  assert.deepStrictEqual(Array.from(out.items.filter(i => E.f.rvIsOfficial(i)).map(i => i.word.hz)), official.map(i => i.word.hz));
+});
+test('rvAddExtras: người mới (learner = null) hoặc đã có bằng chứng tự gõ → KHÔNG thêm câu thăm dò và không gọi API thăm dò', async () => {
+  for (const learner of [null, { v: 1, skills: {} }, { v: 1, skills: { recall: { c: { n: 60, ok: 54 }, t: { n: 30, ok: 27 }, rc: { n: 0, ok: 0 }, rt: { n: 0, ok: 0 } } } }]) {
+    const urls = []; const E = makeEnv({ fetch: probeFetch(urls, ['汤', '包子'], ['电影', '音乐']) });
+    E.env.learner = learner;
+    const out = await E.f.rvAddExtras(OFFICIAL8());
+    assert.ok(out.items.every(i => !i.probe));
+    assert.ok(!urls.some(u => /skill=recall/.test(u)), 'không được gọi API thăm dò');
+    assert.strictEqual(out.extraCount, 2); // hành vi cũ: 2 từ yếu
+  }
+});
+test('rvAddExtras: người học tắt câu tự gõ → không thăm dò; cap=1 → từ yếu được ưu tiên (không thăm dò); từ yếu thiếu → vẫn đủ chỗ', async () => {
+  const urls = []; const E = makeEnv({ fetch: probeFetch(urls, ['汤', '包子'], ['电影', '音乐']) });
+  E.env.learner = LEARNER_PROBE; E.ctx.localStorage = { getItem: () => '0' }; // rvAllowTyped = '0'
+  assert.ok((await E.f.rvAddExtras(OFFICIAL8())).items.every(i => !i.probe));
+  const E2 = makeEnv({ fetch: probeFetch([], ['汤'], ['电影']) }); E2.env.learner = LEARNER_PROBE;
+  const out4 = await E2.f.rvAddExtras(OFFICIAL8().slice(0, 4)); // 4 thẻ → cap = 1
+  assert.ok(out4.items.every(i => !i.probe) && out4.extraCount === 1);
+  const E3 = makeEnv({ fetch: probeFetch([], [], ['电影']) }); E3.env.learner = LEARNER_PROBE; // không có từ yếu nào → thăm dò vẫn có
+  const out8 = await E3.f.rvAddExtras(OFFICIAL8());
+  assert.strictEqual(out8.items.filter(i => i.probe === 'typed').length, 1);
+});
+test('Câu thăm dò dựng đúng dạng TỰ GÕ nghĩa→chữ Hán, kèm lý do; thử lại sau khi sai thì ĐỔI sang dạng khác', () => {
+  const E = makeEnv(); E.env.learner = LEARNER_PROBE;
+  E.env.q.items = [item('extra', '认真', { targetSkill: 'recall', probe: 'typed' }), item('review', '准备')];
+  E.f.rvPrepareCurrentCard();
+  const q = E.env.question;
+  assert.strictEqual(q.typeId, 'typeVi2hz'); assert.ok(q.typed); assert.strictEqual(q.exercisePractice, 'practice-recall-typed');
+  assert.ok(q.why && /tự gõ/.test(q.why));
+  const E2 = makeEnv(); E2.env.learner = LEARNER_PROBE;
+  E2.env.q.items = [item('extra', '认真', { targetSkill: 'recall', probe: 'typed', failedTypes: ['typeVi2hz'], tries: 1 }), item('review', '准备')];
+  E2.f.rvPrepareCurrentCard();
+  assert.ok(E2.env.question && E2.env.question.typeId !== 'typeVi2hz' && !E2.env.question.typed);
+});
+test('Câu thăm dò là LUYỆN BỔ SUNG: nộp qua submitSkillPractice (practice-*), KHÔNG qua submitFsrsReview', () => {
+  const src = grab('rvSubmitTyped');
+  assert.ok(/submitSkillPractice\(\{ word: w, exerciseType: q\.exercisePractice/.test(src), 'nhánh luyện bổ sung của câu tự gõ phải ghi kỹ năng');
+  assert.ok(/rvIsPractice\(item\)/.test(src), 'rvSubmitTyped phải tách nhánh practice khỏi nhánh chính thức');
+  // Nhánh practice KHÔNG được chứa lệnh gửi FSRS: cắt đoạn từ "rvIsPractice(item)" tới hết nhánh đó.
+  const i = src.indexOf('rvIsPractice(item)'); const seg = src.slice(i, src.indexOf('return', i) + 6);
+  assert.ok(!/submitFsrsReview|api\/study\/review/.test(seg), 'nhánh practice không được gọi FSRS');
+});
+test('rvLoadExamples: nạp kho ví dụ (cả đường "Học tiếp"/"Học lại"); chờ tối đa waitMs rồi vẫn tiếp tục khi mạng chậm', async () => {
+  const E = makeEnv({ fetch: async (u) => ({ json: async () => ({ ok: true, examples: [{ hz: '认真', zh: '他很认真', vi: 'Anh ấy rất chăm chỉ' }] }) }) });
+  await E.f.rvLoadExamples([item('review', '认真')], 1500);
+  assert.strictEqual(E.env.pool.length, 1);
+  const E2 = makeEnv({ fetch: () => new Promise(() => {}) }); // không bao giờ trả về
+  const t0 = Date.now(); await E2.f.rvLoadExamples([item('review', '认真')], 30);
+  assert.ok(Date.now() - t0 < 1000 && E2.env.pool.length === 0);
+  const E3 = makeEnv(); await E3.f.rvLoadExamples([], 1500); // hàng đợi rỗng → không làm gì, không lỗi
+});
+test('Tĩnh: phiên "Học tiếp" và "Học lại từ đầu" đều gọi rvLoadExamples; phiên lưu cũ (V126, chưa có learner) khôi phục được', () => {
+  const rv = review;
+  const start = rv.slice(rv.indexOf('async function startStudySession'), rv.indexOf('async function rvRelearnFromStart'));
+  assert.ok((start.match(/rvLoadExamples\(/g) || []).length >= 2, 'startStudySession: khôi phục + phiên mới');
+  assert.ok(/saved\.extra && saved\.extra\.learner && saved\.extra\.learner\.v === 1\) \? saved\.extra\.learner : null/.test(start));
+  assert.ok(/rvLoadExamples\(/.test(rv.slice(rv.indexOf('async function rvRelearnFromStart'))));
+  assert.ok(/\/api\/study\/session\?adaptive=1/.test(rv));
 });
 
 console.log('\n[4] Mô phỏng cả buổi (kết thúc hữu hạn, chống lặp)');
