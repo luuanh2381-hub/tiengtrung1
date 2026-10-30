@@ -31,6 +31,7 @@ let rvPhase = 'question'; // 'question' (đang chờ chọn đáp án) | 'answer
 let rvWeakMode = false;
 let rvSummary = { reviewCount: 0, newCount: 0 };
 let rvExamplePool = [];
+let rvAdaptNote = '';  // V128 giai đoạn 3: thông báo (1 lần) khi buổi học vừa bớt câu luyện thêm theo kế hoạch; xoá ở lần chuyển câu kế tiếp, không lưu
 let rvLearner = null;   // V127: số đếm kỹ năng cấp NGƯỜI HỌC do server gửi kèm phiên (null = người mới/mất mạng → bộ chọn chạy như V126)
 let rvSubmitting = false;
 let rvOptions = [];      // 4 lựa chọn trắc nghiệm của câu hiện tại (sinh 1 lần/câu, không sinh lại mỗi lần render)
@@ -70,6 +71,7 @@ const RV_NEW_GAP = 3;           // thẻ FSRS chính thức của từ mới đ�
 const RV_DRILL_GAP = 3;         // khoảng cách khi đưa câu luyện sai quay lại
 const RV_DRILL_MAX_TRIES = 2;   // tối đa 2 lần hỏi 1 từ ở chế độ luyện lại (không bắt người học lặp vô hạn)
 const RV_EXTRA_MAX = 6;
+const RV_SKILL_NAME = { recognition: 'Nhận diện', recall: 'Nhớ chủ động', listening: 'Nghe', pinyin: 'Pinyin', context: 'Từ trong câu' }; // V128
 const RV_PROBE_MAX = 2;  // V127: tối đa 2 câu tự gõ "thăm dò nhớ chủ động" mỗi buổi — luyện bổ sung, KHÔNG phải thẻ FSRS
 const RV_PRACTICE_TYPES = ['drill', 'extra', 'check', 'redo'];
 // ── V115 ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -165,8 +167,13 @@ function rvBuildQuestionFor(item) {
     const opts = Object.assign({}, base, { allowPracticeOnly: true, exclude: item.failedTypes || [] });
     const only = item.targetSkill ? rvSkillTypes(item.targetSkill) : [];
     // Ưu tiên đúng kỹ năng đang yếu; nếu kỹ năng đó không dựng được câu hợp lệ thì thử bất kỳ dạng nào khác.
-    return (only.length && QS.choose(w, ctx, Object.assign({}, opts, { only }))) || QS.choose(w, ctx, opts)
+    const q = (only.length && QS.choose(w, ctx, Object.assign({}, opts, { only }))) || QS.choose(w, ctx, opts)
       || QS.choose(w, ctx, Object.assign({}, base, { allowPracticeOnly: true }));
+    // V128: câu luyện thêm do KẾ HOẠCH (kỹ năng tụt lại ở mức người học) → nói rõ lý do, chỉ khi câu dựng được ĐÚNG kỹ năng đó.
+    if (q && item.fromPlan && item.targetSkill && q.skill === item.targetSkill && RV_SKILL_NAME[item.targetSkill]) {
+      q.why = `Kỹ năng ${RV_SKILL_NAME[item.targetSkill]} của bạn đang thấp hơn các kỹ năng khác (theo phần Phân tích năng lực), nên câu này được thêm vào để luyện (luyện bổ sung, không đổi lịch ôn).`;
+    }
+    return q;
   }
   return QS.choose(w, ctx, Object.assign({}, base, { fsrsOnly: true })); // thẻ FSRS chính thức: chỉ dạng server tự chấm được
 }
@@ -186,9 +193,12 @@ function rvRecordAnswer(item, q, correct, ms, official) {
     const updated = QS.learn(item.skillProfile, rvQSession, q, correct, ms);
     item.skillProfile = updated;
     for (const other of rvQueue.items) if (other !== item && other.word && other.word.hz === q.hz) other.skillProfile = updated;
+    // V128 giai đoạn 3: cập nhật cả số liệu cấp NGƯỜI HỌC (cùng điều kiện "là bằng chứng" như hồ sơ từng từ ngay trên; cùng cách đếm của server) để bộ chọn
+    // câu hỏi và phần Phân tích thấy kết quả vừa rồi trong CHÍNH buổi này. Thiếu module / lỗi → giữ nguyên (chạy như V127). Số liệu thật vẫn do server tính lại độc lập.
+    if (typeof TP !== 'undefined') { try { rvLearner = TP.applyAnswer(rvLearner, { skill: q.skill, typed: !!q.typed, correct: !!correct }); } catch {} }
   }
   QS.record(rvQSession, q, correct, ms);
-  rvLog.push({ hz: q.hz, l: q.l, typeId: q.typeId, skill: q.skill, correct: !!correct, ms: ms == null ? null : Math.round(ms), official: !!official, source: item.type, hinted: !!q.hinted, intro: rvIsIntroExposure(item) }); // V118: intro = lượt chính thức đầu sau màn giới thiệu (vừa xem đáp án) → không dùng làm bằng chứng kỹ năng ở tổng kết
+  rvLog.push({ hz: q.hz, l: q.l, typeId: q.typeId, skill: q.skill, correct: !!correct, ms: ms == null ? null : Math.round(ms), official: !!official, source: item.type, hinted: !!q.hinted, intro: rvIsIntroExposure(item), plan: !!item.fromPlan }); // V128: plan = câu luyện thêm theo kế hoạch // V118: intro = lượt chính thức đầu sau màn giới thiệu (vừa xem đáp án) → không dùng làm bằng chứng kỹ năng ở tổng kết
   if (rvLog.length > 400) rvLog.shift();
 }
 function rvRestoreQSession() {
@@ -337,7 +347,7 @@ async function startStudySession(weakMode, forceNew) {
         rvNormalizeIntroFlags(rvQueue.items, rvLog); // V114: hàng đợi lưu từ V113 chưa có cờ introExposurePending
         rvStage = 'run'; rvStartInfo = null; rvMatch = null;
         rvBlockedByBacklog = false; rvTotalDue = 0; // phiên đang khôi phục chắc chắn có thẻ thật, không liên quan lý do "bị chặn"
-        rvExamplePool = []; rvLastAnswer = null;
+        rvExamplePool = []; rvLastAnswer = null; rvAdaptNote = '';
         rvLearner = (saved.extra && saved.extra.learner && saved.extra.learner.v === 1) ? saved.extra.learner : null; // V127: phiên lưu từ V126 chưa có → null (bộ chọn chạy như V126)
         goTab('review');
         await rvLoadExamples(rvQueue.items, 1500); // V127: trước đây phiên khôi phục không nạp lại kho ví dụ → thiếu câu điền từ
@@ -351,7 +361,7 @@ async function startStudySession(weakMode, forceNew) {
     ssArchiveSession(savedKey, rvQueue);
     sqClearPersisted(savedKey);
   }
-  rvExamplePool = []; rvLastAnswer = null; rvLearner = null;
+  rvExamplePool = []; rvLastAnswer = null; rvLearner = null; rvAdaptNote = '';
   rvQueue = sqCreate();
   rvLog = []; rvQSession = QS.newSession(); rvMatch = null; rvStage = 'run'; rvStartInfo = null; // V106: buổi mới
   rvQueue.sessionId = genIdempotencyKey();
@@ -425,7 +435,7 @@ async function rvRelearnFromStart() {
   const savedKey = rvStorageMode();
   ssArchiveSession(savedKey, rvQueue);
   sqClearPersisted(savedKey);
-  rvExamplePool = []; rvLastAnswer = null;
+  rvExamplePool = []; rvLastAnswer = null; rvAdaptNote = '';
   rvQueue = sqCreate();
   rvLog = []; rvQSession = QS.newSession(); rvMatch = null; rvStage = 'run'; rvStartInfo = null; // V106: buổi mới
   rvQueue.sessionId = genIdempotencyKey();
@@ -792,7 +802,8 @@ function rvQuestionBodyHtml(tagLabel, w) {
       <div class="rv-prompt">${escapeHtml(p.ask)}</div>`;
   }
   const strictTag = strict ? `<div class="rv-strict-tag">🧪 Kiểm tra trí nhớ thực sự${q.hinted ? ' · câu này có gợi ý nên nếu đúng sẽ được ghi là “đúng nhờ gợi ý”' : ''}</div>` : '';
-  const whyHtml = (q.why && !strict) ? `<div class="rv-why">💡 ${escapeHtml(q.why)}</div>` : '';
+  const adaptHtml = rvAdaptNote ? `<div class="rv-why">🔔 ${escapeHtml(rvAdaptNote)}</div>` : ''; // V128 giai đoạn 3
+  const whyHtml = adaptHtml + ((q.why && !strict) ? `<div class="rv-why">💡 ${escapeHtml(q.why)}</div>` : '');
   if (q.typed) { // V110: câu TỰ NHẬP — không có nút lựa chọn
     const isPy = q.typed === 'py';
     return `
@@ -893,6 +904,20 @@ function rvMatchHtml(tagLabel) {
         : `<div class="kbd-hint" style="text-align:center">Chạm 1 chữ Hán bên trái, rồi chạm đáp án bên phải</div>`}`;
 }
 
+// V128 (giai đoạn 1): kế hoạch ưu tiên theo năng lực — dùng đúng công thức của màn "Phân tích năng lực" (js/training-plan.js, gọi thẳng QS nên
+// khớp bộ chọn câu hỏi). CHỈ HIỂN THỊ: không đổi câu hỏi, không đổi lịch FSRS. Thiếu module/số liệu hoặc lỗi → không hiện gì (không chặn màn bắt đầu).
+function rvPlanHtml() {
+  if (typeof TP === 'undefined') return '';
+  try {
+    const probeCount = (rvQueue && Array.isArray(rvQueue.items)) ? rvQueue.items.filter(it => it && it.probe === 'typed').length : 0;
+    const extraBySkill = {}; // V128: số câu luyện thêm theo kế hoạch THẬT đang có trong hàng đợi, theo kỹ năng
+    for (const it of (rvQueue && Array.isArray(rvQueue.items) ? rvQueue.items : [])) if (it && it.type === 'extra' && it.fromPlan && it.targetSkill) extraBySkill[it.targetSkill] = (extraBySkill[it.targetSkill] || 0) + 1;
+    const d = TP.describe(TP.build(rvLearner, { typedEnabled: rvTypedEnabled() }), { probeCount, extraBySkill });
+    if (!d.headline) return '';
+    return `<div class="rv-explain" style="text-align:left"><div>🎯 <b>${escapeHtml(d.headline)}</b></div>${d.lines.map(l => `<div style="margin-top:3px">${escapeHtml(l)}</div>`).join('')}</div>`;
+  } catch { return ''; }
+}
+
 function rvStartHtml() {
   const i = rvStartInfo;
   const cell = (n, l) => `<div class="rv-start-cell"><div class="rv-start-num">${n}</div><div class="rv-start-lbl">${l}</div></div>`;
@@ -908,6 +933,7 @@ function rvStartHtml() {
       ${cell('~' + i.estimated, 'Số câu dự kiến')}
     </div>
     ${rvBlockedByBacklog ? `<div class="rv-explain">⏳ Đang có ${rvTotalDue} thẻ cần ôn, nên hệ thống tạm chặn học thêm từ mới cho đến khi ôn hết.</div>` : ''}
+    ${rvPlanHtml()}
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:8px">
       <button class="btn btn-primary" onclick="rvBeginSession()">▶️ Bắt đầu học</button>
       ${i.extraCount > 0 ? `<button class="btn" onclick="rvStartWeakPractice()">🎯 Chỉ luyện từ hay sai</button>` : ''}
@@ -1306,8 +1332,22 @@ function rvMatchContinue() {
 // quả server. Đúng → loại vĩnh viễn khỏi phiên. Sai (Again) → chèn lại cách tối thiểu REPEAT_GAP
 // thẻ khác, KHÔNG gọi lại server giữa phiên — hàng đợi cạn thật (kể cả các thẻ Again đã được xử lý
 // xong) mới coi là hết. Dùng CHUNG field completedCards/answeredCount/endTime/sessionKnownHz với 4 tab kia.
+// V128 giai đoạn 3: thích ứng giữa buổi. Làm tốt kỹ năng nào thì bớt các câu luyện thêm THEO KẾ HOẠCH còn lại của kỹ năng đó; sai liên tiếp thì không dồn thêm.
+// CHỈ bớt câu luyện thêm theo kế hoạch CHƯA hỏi (fromPlan, chưa tries) — thẻ FSRS chính thức, "từ hay sai", câu thăm dò, câu luyện lại sau khi sai: không bao giờ bị đụng tới.
+// Quyết định tính thuần từ rvLog + hàng đợi (cả hai đều được lưu theo buổi) nên khôi phục phiên giữa chừng vẫn ra cùng kết luận. Lỗi/thiếu module → không làm gì.
+function rvAdaptExtras() {
+  if (typeof TP === 'undefined' || !rvQueue || rvQueue.practiceOnly) return;
+  try {
+    const r = TP.adaptExtras(rvLog, rvQueue.items, rvLearner);
+    if (!r.events.length) return;
+    const drop = new Set(r.drop);
+    for (let i = rvQueue.items.length - 1; i >= 0; i--) if (drop.has(rvQueue.items[i])) rvQueue.items.splice(i, 1);
+    rvAdaptNote = TP.describeAdapt(r.events).join(' ');
+  } catch {}
+}
 function rvAdvanceQueue() {
   if (currentTab !== 'review') return; // user đã rời màn hình, tránh render nhầm chỗ
+  rvAdaptNote = ''; // V128: thông báo thích ứng chỉ hiện trong lúc người học làm câu kế tiếp
   const it = rvQueue.items.shift();
   const ok = !!(rvLastAnswer && rvLastAnswer.correct);
   if (it && it.type === 'match') {
@@ -1340,6 +1380,7 @@ function rvAdvanceQueue() {
       }
     }
   }
+  rvAdaptExtras(); // V128 giai đoạn 3: trước khi kiểm tra "hết hàng đợi" và trước khi lưu phiên → bản lưu phản ánh hàng đợi đã bớt
   const savedKey = rvStorageMode();
   if (!rvQueue.items.length) {
     rvQueue.endTime = Date.now();
@@ -1355,7 +1396,7 @@ function rvAdvanceQueue() {
 }
 
 // ── V106: nguồn thứ 3 — từ người học hay trả lời sai (từ hồ sơ kỹ năng), trộn xen kẽ vào buổi học ──────
-// Giới hạn: ≤ 25% số thẻ chính thức (tối thiểu 1 khi buổi có ≥4 thẻ), ≤ RV_EXTRA_MAX. KHÔNG thay thế và KHÔNG
+// Giới hạn: ≤ 25% số thẻ chính thức (tối thiểu 1 khi buổi có ≥4 thẻ), ≤ RV_EXTRA_MAX; V128: nâng lên 40% / ≤ 10 CHỈ khi có kỹ năng tụt lại đáng tin. KHÔNG thay thế và KHÔNG
 // chen lên trước thẻ FSRS nào: thẻ chính thức giữ nguyên thứ tự, extra chỉ xen vào giữa.
 async function rvFetchWeakWords(limit) {
   if (!authToken) return [];
@@ -1378,16 +1419,54 @@ async function rvFetchProbeWords(limit) {
     return d.words.filter(w => w.score == null); // score != null nghĩa là đã có điểm (yếu) → bỏ
   } catch { return []; }
 }
+// V128 (giai đoạn 2): từ để luyện thêm cho MỘT kỹ năng tụt lại (từ đã ôn mà kỹ năng đó yếu, rồi đến từ chưa đủ dữ liệu kỹ năng đó).
+async function rvFetchSkillWords(skill, limit) {
+  if (!authToken) return [];
+  try {
+    const audio = (typeof skillAudioAvailable === 'function' && skillAudioAvailable()) ? 1 : 0;
+    const res = await fetch(`/api/skills/practice-words?skill=${encodeURIComponent(skill)}&weakOnly=0&limit=${limit}&allowListening=${audio}`, { headers: authHeaders() });
+    const d = await res.json().catch(() => null);
+    if (!d || !d.ok || !Array.isArray(d.words)) return [];
+    return d.words;
+  } catch { return []; }
+}
+// V128: kỹ năng tụt lại ĐÁNG TIN (js/training-plan.js, cùng công thức với màn Phân tích) mà có thể luyện thêm ngay. Thiếu module/số liệu/lỗi → [] (chạy y như V127).
+function rvPlanPriorities() {
+  if (typeof TP === 'undefined') return [];
+  try {
+    const audio = typeof skillAudioAvailable === 'function' && skillAudioAvailable();
+    return TP.actionable(TP.build(rvLearner, { typedEnabled: rvTypedEnabled() }), audio ? [] : ['listening']); // không có giọng đọc → không thể luyện nghe
+  } catch { return []; }
+}
 async function rvAddExtras(items) {
   const officialN = items.length;
-  const cap = officialN ? Math.min(RV_EXTRA_MAX, Math.max(officialN >= 4 ? 1 : 0, Math.floor(officialN / 4))) : RV_EXTRA_MAX;
-  if (cap <= 0) return { items, extraCount: 0 };
+  const baseCap = officialN ? Math.min(RV_EXTRA_MAX, Math.max(officialN >= 4 ? 1 : 0, Math.floor(officialN / 4))) : RV_EXTRA_MAX;
+  if (baseCap <= 0) return { items, extraCount: 0 };
+  // V128: có kỹ năng tụt lại đáng tin → nâng trần (40% số thẻ, ≤ 10 câu). Không có → giữ trần cũ (25%, ≤ 6) như V127.
+  const planPri = rvPlanPriorities();
+  const cap = planPri.length ? TP.extraCap(officialN, baseCap, planPri) : baseCap;
   // V127: số liệu người học cho thấy nhận diện đã khá vững mà chưa đủ bằng chứng tự gõ → để dành tối đa RV_PROBE_MAX chỗ (không quá cap, cần cap ≥ 2
   // để từ yếu vẫn được ưu tiên ≥ 1 chỗ) cho câu thăm dò tự gõ. Câu thăm dò là luyện bổ sung nên KHÔNG đổi lịch ôn FSRS.
   const probeSlots = (cap >= 2 && rvTypedEnabled() && QS.recallProbeNeeded(rvLearner)) ? Math.min(RV_PROBE_MAX, cap - 1) : 0;
-  const [rows, probeRows] = await Promise.all([rvFetchWeakWords(cap + 3), probeSlots ? rvFetchProbeWords(probeSlots + 3) : Promise.resolve([])]);
+  const alloc = planPri.length ? TP.allocate(planPri, cap - probeSlots) : { planSlots: 0, bySkill: {} }; // chỗ dành cho kỹ năng tụt lại
+  const planSkills = Object.keys(alloc.bySkill).filter(k => alloc.bySkill[k] > 0);
+  const [rows, probeRows, planRowsArr] = await Promise.all([
+    rvFetchWeakWords(cap + 3), probeSlots ? rvFetchProbeWords(probeSlots + 3) : Promise.resolve([]),
+    Promise.all(planSkills.map(k => rvFetchSkillWords(k, alloc.bySkill[k] + 3))),
+  ]);
   const inQueue = new Set(items.map(i => i.word.hz));
   const extras = [];
+  // V128: trước hết các từ luyện cho kỹ năng tụt lại (đúng hạn mức từng kỹ năng); thiếu ứng viên → chỗ còn lại nhường cho "từ hay sai" bên dưới.
+  planSkills.forEach((k, idx) => {
+    let n = 0;
+    for (const r of planRowsArr[idx] || []) {
+      if (n >= alloc.bySkill[k] || extras.length >= cap - probeSlots) break;
+      if (inQueue.has(r.hz) || sessionKnownHz.has(r.hz)) continue;
+      const w = rvWordOf(r); if (!w) continue;
+      inQueue.add(r.hz); n++;
+      extras.push({ type: 'extra', word: w, targetSkill: k, fromPlan: true });
+    }
+  });
   for (const r of rows) {
     if (inQueue.has(r.hz) || sessionKnownHz.has(r.hz) || extras.length >= cap - probeSlots) continue; // FIX V123: không chèn lại từ đã trả lời ĐÚNG hôm nay
     const w = rvWordOf(r); if (!w) continue;
@@ -1413,6 +1492,11 @@ async function rvAddExtras(items) {
     }
   }
   if (!extras.length) return { items, extraCount: 0 };
+  if (extras.some(e => e.fromPlan)) { // V128: xen kẽ câu theo kế hoạch với "từ hay sai"/thăm dò để không dồn một loại vào nửa đầu buổi (không có câu theo kế hoạch → giữ nguyên thứ tự như V127)
+    const a = extras.filter(e => e.fromPlan), b = extras.filter(e => !e.fromPlan), m = [];
+    while (a.length || b.length) { if (a.length) m.push(a.shift()); if (b.length) m.push(b.shift()); }
+    extras.length = 0; extras.push(...m);
+  }
   const out = []; const step = Math.max(1, Math.ceil(items.length / (extras.length + 1)));
   let ei = 0;
   items.forEach((it, i) => { out.push(it); if ((i + 1) % step === 0 && ei < extras.length) out.push(extras[ei++]); });
@@ -1462,7 +1546,7 @@ function rvBeginPracticeOnly(items) {
   rvQueue.lessonFilter = sqSnapshotLessonFilter();
   rvQueue.items = items;
   rvQueue.totalPlanned = items.length;
-  rvStage = 'run'; rvStartInfo = null;
+  rvStage = 'run'; rvStartInfo = null; rvAdaptNote = '';
   rvPrepareCurrentCard();
   render();
 }

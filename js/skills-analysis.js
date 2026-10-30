@@ -7,7 +7,7 @@
 // Mọi dữ liệu do server tính; file này chỉ hiển thị. Mọi chuỗi từ server/dữ liệu đều qua escapeHtml.
 
 const SA_MIN_N = 10; // khớp MIN_RETENTION_N ở lib/skills.js (chỉ dùng để giải thích cho người học)
-let saState = { recs: null, retention: null, loadedAt: 0, error: null, word: null, wordLoading: false, wordError: null };
+let saState = { recs: null, retention: null, learner: null, loadedAt: 0, error: null, word: null, wordLoading: false, wordError: null };
 
 const SA_LEVEL = {
   insufficient: { text: 'Chưa đủ dữ liệu', cls: 'sa-lv-none' },
@@ -54,13 +54,30 @@ function saStyle() {
 // ── Tải dữ liệu phụ (song song, KHÔNG chặn phần chính; lỗi chỉ làm mất các khối này) ─────────────────
 async function saLoadExtras() {
   try {
-    const [recs, retention] = await Promise.all([
+    const [recs, retention, learner] = await Promise.all([
       skFetchJson('/api/skills/recommendations?days=90'),
       skFetchJson('/api/skills/retention?days=90'),
+      skFetchJson('/api/skills/learner').catch(() => null), // V128: phần phụ — máy chủ cũ/lỗi chỉ làm mất khối "Kế hoạch ưu tiên", không làm mất các khối khác
     ]);
-    saState.recs = recs; saState.retention = retention; saState.error = null; saState.loadedAt = Date.now();
+    saState.recs = recs; saState.retention = retention; saState.learner = (learner && learner.learner) || null; saState.error = null; saState.loadedAt = Date.now();
   } catch (e) { saState.error = e.message; }
   if (currentTab === 'skills' && !skState.practice && !saState.word) render();
+}
+
+// ── V128: KẾ HOẠCH ƯU TIÊN THEO NĂNG LỰC — cùng công thức (js/training-plan.js) và cùng số liệu (/api/skills/learner = đúng nguồn,
+// đúng cửa sổ 90/14 ngày mà "Hôm nay học" nhận) nên hai màn luôn nói cùng một điều. Chỉ hiển thị. ──────────────────────────────────────
+function saRenderPlan() {
+  if (typeof TP === 'undefined' || !saState.learner) return '';
+  try {
+    const d = TP.describe(TP.build(saState.learner, { typedEnabled: typeof rvTypedEnabled === 'function' ? rvTypedEnabled() : true }));
+    if (!d.headline) return '';
+    const rows = d.rows.map(r => `<div class="sa-brow"><span class="sa-blbl">${escapeHtml(r.label)}</span><span style="flex:1">${escapeHtml(r.text)}</span></div>`).join('');
+    return `<div class="panel"><div class="panel-title">🎯 Kế hoạch ưu tiên hôm nay</div>
+      <div style="font-weight:800;margin-bottom:4px">${escapeHtml(d.headline)}</div>
+      ${d.lines.map(l => `<div class="sa-note" style="margin:2px 0">${escapeHtml(l)}</div>`).join('')}
+      <div style="margin-top:8px">${rows}</div>
+      <div class="sa-note">${escapeHtml(d.note)} Đây cũng chính là số liệu mà màn "Hôm nay học" dùng để chọn dạng câu hỏi.</div></div>`;
+  } catch { return ''; }
 }
 
 // ── Khuyến nghị tổng thể ────────────────────────────────────────────────────────────────────────
@@ -223,5 +240,5 @@ function saRenderWordDetail() {
 }
 
 function saResetState() {
-  saState = { recs: null, retention: null, loadedAt: 0, error: null, word: null, wordLoading: false, wordError: null };
+  saState = { recs: null, retention: null, learner: null, loadedAt: 0, error: null, word: null, wordLoading: false, wordError: null };
 }

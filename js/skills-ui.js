@@ -20,7 +20,7 @@ function renderSkills() {
   }
   if (typeof saState !== 'undefined' && saState.word) return saRenderWordDetail(); // V110: xem chi tiết 1 từ
   // V110: khuyến nghị lên đầu (hành động được), rồi tổng quan, trí nhớ sau khoảng nghỉ, luyện tập, từ yếu, dạng bài, tiến bộ.
-  return saRenderRecs() + saRenderPooled() + skRenderOverview() + saRenderRetention() + skRenderPracticeLauncher() + saRenderWordSearch()
+  return saRenderPlan() + saRenderRecs() + saRenderPooled() + skRenderOverview() + saRenderRetention() + skRenderPracticeLauncher() + saRenderWordSearch()
     + skRenderWeakList() + saRenderByType() + skRenderTrend();
 }
 
