@@ -920,15 +920,19 @@ app.get('/api/skills/trend', async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
-// Chọn từ cho bài luyện kỹ năng bổ sung (recall | listening | mixed). `allowListening` do client báo
+// Chọn từ cho bài luyện kỹ năng bổ sung (recall | pinyin | context | listening | recognition | mixed). `allowListening` do client báo
 // (chỉ client biết trình duyệt có giọng đọc tiếng Trung không) — "listening" chỉ được chọn khi có âm thanh.
+// V128 giai đoạn 4: 'recognition' CHỈ được trả khi client yêu cầu RIÊNG (skill=recognition — câu luyện thêm theo kế hoạch năng lực). Nó KHÔNG nằm trong
+// 'mixed' → "từ hay sai", các chế độ luyện của tab Phân tích và mọi nơi gọi cũ nhận đúng danh sách như V127. CHỈ ĐỌC.
 app.get('/api/skills/practice-words', async (req, res) => {
   const authed = await requireAuth(req, res);
   if (!authed) return;
   try {
     const wantListening = req.query.allowListening === '1';
-    const allowed = MEASURABLE_SKILLS.filter(s => s !== 'recognition' && (s !== 'listening' || wantListening));
     const skill = req.query.skill === 'mixed' ? 'mixed' : req.query.skill;
+    const allowed = skill === 'recognition'
+      ? ['recognition']
+      : MEASURABLE_SKILLS.filter(s => s !== 'recognition' && (s !== 'listening' || wantListening));
     if (skill !== 'mixed' && !allowed.includes(skill)) {
       return res.json({ ok: false, error: 'Dạng luyện này hiện chưa khả dụng' });
     }
@@ -982,6 +986,21 @@ app.get('/api/skills/retention', async (req, res) => {
     ]);
     // V115: gộp theo KỸ NĂNG (mọi từ) + trừ xác suất đoán mò — dùng lại đúng dữ liệu byType, KHÔNG thêm truy vấn.
     res.json({ ok: true, ...retention, byType, pooled: skillPooled.summarizePooled(byType) });
+  } catch (e) { fail(res, e); }
+});
+
+// V128: số đếm kỹ năng cấp NGƯỜI HỌC — đúng nguồn và đúng cửa sổ (90 ngày + 14 ngày) mà /api/study/session?adaptive=1 gửi kèm phiên học,
+// để màn Phân tích hiển thị ĐÚNG số liệu "Hôm nay học" đang dùng. CHỈ ĐỌC (2 truy vấn getTypeBreakdown có sẵn); không ghi, không đụng FSRS.
+// Cửa sổ dài lỗi → trả lỗi (không bịa số liệu); chỉ cửa sổ gần đây lỗi → dùng cửa sổ dài (giống reviewService).
+app.get('/api/skills/learner', async (req, res) => {
+  const authed = await requireAuth(req, res);
+  if (!authed) return;
+  try {
+    const [long, recent] = await Promise.all([
+      skillStore.getTypeBreakdown(authed.username, { days: 90 }),
+      skillStore.getTypeBreakdown(authed.username, { days: 14 }).catch(() => null),
+    ]);
+    res.json({ ok: true, learner: skillPooled.learnerCounts(long, recent || []) });
   } catch (e) { fail(res, e); }
 });
 
