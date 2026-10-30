@@ -67,7 +67,7 @@ function makeEnv(opts) {
   const fns = ['rvIsPractice', 'rvIsOfficial', 'rvIsIntroExposure', 'rvQCtx', 'rvSkillTypes', 'rvTypedEnabled', 'rvPracticeSource', // V110: rvBuildQuestionFor/rvPickPractice gọi 2 hàm này
      'rvBuildQuestionFor', 'rvStageLabel', 'rvRecordAnswer', 'rvRestoreQSession', 'rvBaseAutoMs', // V117: rvPickPractice dùng rvBaseAutoMs
    
-    'rvPrepareCurrentCard', 'rvIntroDone', 'rvAdvanceQueue', 'rvFetchWeakWords', 'rvFetchProbeWords', 'rvLoadExamples', 'rvWordOf', 'rvAddExtras', 'rvInsertMatch', 'rvBuildStartInfo',
+    'rvPrepareCurrentCard', 'rvIntroDone', 'rvAdvanceQueue', 'rvFetchWeakWords', 'rvFetchProbeWords', 'rvFetchSkillWords', 'rvPlanPriorities', 'rvAdaptExtras', 'rvLoadExamples', 'rvWordOf', 'rvAddExtras', 'rvInsertMatch', 'rvBuildStartInfo',
     'rvSummaryHtml', 'rvBeginPracticeOnly', 'rvStartRedoWrong', 'rvStartWeakPractice', 'rvPickPractice', 'rvMatchPick', 'rvMatchFinish', 'rvMatchContinue', 'rvPracticeContinue'].map(grab).join('\n');
   const prelude = `
     let rvQueue = sqCreate(), rvQuestion = null, rvQSession = QS.newSession(), rvLog = [], rvStage = 'run', rvStartInfo = null, rvMatch = null,

@@ -73,7 +73,7 @@ function makeEnv(opts) {
   vm.runInContext(read('js/study-queue.js'), ctx); // submitSkillPractice + outbox THẬT
   const consts = ['RV_AUTO_COMMIT_MS', 'RV_NEW_GAP', 'RV_DRILL_GAP', 'RV_DRILL_MAX_TRIES', 'RV_EXTRA_MAX', 'RV_PROBE_MAX', 'RV_PRACTICE_TYPES', 'RV_CORRECTION_GAP', 'RV_RATING_ORDER', 'RV_BLANK_MARK'].map(constLine).join('\n');
   const fns = ['rvIsPractice', 'rvIsOfficial', 'rvIsIntroExposure', 'rvQCtx', 'rvSkillTypes', 'rvTypedEnabled', 'rvPracticeSource', 'rvBuildQuestionFor', 'rvStageLabel', 'rvRecordAnswer', 'rvBaseAutoMs',
-    'rvPrepareCurrentCard', 'rvPickPractice', 'rvSubmitTyped', 'rvFetchSystemRating', 'rvShouldAutoCommit', 'rvFetchWeakWords', 'rvFetchProbeWords', 'rvWordOf', 'rvAddExtras', 'rvFetchFreshSession'].map(grab).join('\n');
+    'rvPrepareCurrentCard', 'rvPickPractice', 'rvSubmitTyped', 'rvFetchSystemRating', 'rvShouldAutoCommit', 'rvFetchWeakWords', 'rvFetchProbeWords', 'rvFetchSkillWords', 'rvPlanPriorities', 'rvWordOf', 'rvAddExtras', 'rvFetchFreshSession'].map(grab).join('\n');
   vm.runInContext(`
     let rvQueue = sqCreate(), rvQuestion = null, rvQSession = QS.newSession(), rvLog = [], rvStage = 'run', rvStartInfo = null, rvMatch = null,
         rvPhase = 'question', rvLastAnswer = null, rvAnswerChanges = 0, rvRatingPhase = null, rvSystemRating = null, rvUserRating = null,
