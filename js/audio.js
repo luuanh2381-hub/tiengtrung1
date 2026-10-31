@@ -52,9 +52,11 @@ function splitPhrases(text) {
 }
 
 // Speak with natural phrasing: queue utterances with micro-pauses between chunks
-function speak(text, hooks) {
+function speak(text, hooks, opts) {
   // V117: `hooks` (tuỳ chọn) = { start, end, error } — để màn nghe báo "đang phát / đã nghe / bị chặn". Không đổi cách phát cũ.
   if (!('speechSynthesis' in window)) { if (hooks && hooks.error) hooks.error(); return; }
+  // V129: từ có "chữ đọc" đã sửa (js/tts-fix.js, vd 行 → 两行) thì đọc chữ đó cho đúng pinyin. opts.raw = đọc đúng chữ truyền vào (nghe thử ở màn Sửa phát âm).
+  if (!(opts && opts.raw) && typeof ttsResolve === 'function') text = ttsResolve(text);
   speechSynthesis.cancel();
 
   const phrases = splitPhrases(text);

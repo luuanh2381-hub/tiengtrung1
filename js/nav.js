@@ -9,7 +9,7 @@ const NAV_GROUPS = {
   home: ['home'],
   learn: ['today', 'review', 'flash', 'quiz', 'type', 'listen'],
   progress: ['stats', 'skills', 'difficult'],
-  more: ['compare', 'aibank', 'admin', 'vocab'],
+  more: ['compare', 'aibank', 'ttsfix', 'admin', 'vocab'],
 };
 const NAV_BTN_ID = { home: 'tab-home', learn: 'tab-today', progress: 'tab-progress', more: 'tab-more' };
 // Chip phụ. 'review' (đang trong phiên học) cố ý KHÔNG có chip để giữ màn học gọn.

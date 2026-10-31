@@ -51,7 +51,7 @@ let progressState = defaultProgress();
 function applyUIState() {
   normalizeProgress(progressState);
   const ui = progressState.ui;
-  const validTabs = ['home','today','flash','quiz','type','listen','stats','skills','difficult','compare','aibank','admin','vocab'];
+  const validTabs = ['home','today','flash','quiz','type','listen','stats','skills','difficult','compare','aibank','ttsfix','admin','vocab'];
   currentTab = validTabs.includes(ui.lastTab) ? ui.lastTab : 'home';
   // Mục "HSK 4+" (id 8) đã bỏ khi khai báo lại HSK 1-5 = bài 33-37 — loại khỏi lựa chọn đã lưu để khỏi lỗi.
   selectedBookIds = new Set(ui.selectedBookIds.filter(id => id !== 8));
@@ -250,6 +250,7 @@ function openAuthGate() {
   document.getElementById('tab-admin').style.display = 'none';
   document.getElementById('tab-vocab').style.display = 'none';
   const ab = document.getElementById('tab-aibank'); if (ab) ab.style.display = 'none';
+  const tf = document.getElementById('tab-ttsfix'); if (tf) tf.style.display = 'none'; // V129
 }
 function closeAuthGate() {
   document.getElementById('auth-gate').style.display = 'none';
@@ -257,6 +258,8 @@ function closeAuthGate() {
   const showAdmin = isAdminRole() ? '' : 'none';
   document.getElementById('tab-admin').style.display = showAdmin;
   document.getElementById('tab-vocab').style.display = showAdmin;
+  const tf = document.getElementById('tab-ttsfix'); if (tf) tf.style.display = showAdmin; // V129: Sửa phát âm chỉ cho quản trị viên
+  if (typeof ttsHintsLoad === 'function') ttsHintsLoad(); // V129: tải "chữ đọc" đã sửa để 🔊 đọc đúng
   const ab = document.getElementById('tab-aibank'); if (ab) ab.style.display = showAdmin; // V119.2: Thư viện AI chỉ cho quản trị viên
 }
 function updateUserBadge() {
