@@ -27,6 +27,7 @@ const reviewService = require('../lib/fsrs/reviewService');
 const skillStore = require('../lib/skill-store');
 const wordNotes = require('../lib/word-notes');
 const aiExplain = require('../lib/ai-explain'); // V119: "🤖 Hỏi AI" ở câu sai
+const ttsHints = require('../lib/tts-hints'); // V129: "Sửa phát âm" cho chữ Hán đa âm
 const studyDays = require('../lib/study-days'); // V119.4: đếm số ngày đã học / số ngày từ khi tạo tài khoản
 const orphans = require('../lib/orphans');
 const { resolveExercise, isCountableAnswer, MEASURABLE_SKILLS, gradeAnswer, PRACTICE_SOURCES, cleanExposure } = require('../lib/skills');
@@ -3014,6 +3015,75 @@ app.post('/api/ai/explain', async (req, res) => {
     res.json({ ok: true, cached: false, data, newExamples, ...quotaInfo(q.used) });
   } catch (e) {
     if (charged) await aiExplain.refundQuota(user).catch(() => {}); // AI lỗi → không mất lượt của người học
+    if (e instanceof PublicError) return fail(res, e);
+    if (isQuotaGeminiError(e && e.message)) return fail(res, e, 'AI đang hết lượt trong phút này. Đợi khoảng 1 phút rồi bấm thử lại nhé.');
+    fail(res, e, 'Không gọi được AI lúc này. Thử lại sau ít phút nhé.');
+  }
+});
+
+// ════════════════════════════════════════════════════
+// V129 — "SỬA PHÁT ÂM" cho chữ Hán đa âm: khi bấm 🔊, web đọc "chữ đọc" (từ gốc + vài chữ ngữ cảnh) thay cho chữ gốc nếu có.
+//   GET  /api/tts/hints      : mọi người đã đăng nhập — { hints: { hz: say } }
+//   GET  /api/tts/candidates : quản trị viên — các từ đáng nghe thử + hints hiện có
+//   POST /api/tts/hints      : quản trị viên — lưu { hz, say } (say rỗng = xoá)
+//   POST /api/tts/suggest    : quản trị viên — AI đề xuất "chữ đọc" (CHƯA lưu; nghe thử rồi mới bấm lưu)
+// Không đụng FSRS / tiến độ học. Bảng tts_hints tự tạo ở lần dùng đầu (xem lib/tts-hints.js).
+// ════════════════════════════════════════════════════
+app.get('/api/tts/hints', async (req, res) => {
+  const authed = await requireAuth(req, res);
+  if (!authed) return;
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, hints: await ttsHints.listHints() });
+  } catch (e) { fail(res, e); }
+});
+
+app.get('/api/tts/candidates', async (req, res) => {
+  const authed = await requireAuth(req, res);
+  if (!authed) return;
+  if (!requireAdmin(authed.db.users[authed.username], res)) return;
+  try {
+    const [items, hints] = await Promise.all([ttsHints.listCandidates(), ttsHints.listHints()]);
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, items, hints });
+  } catch (e) { fail(res, e); }
+});
+
+app.post('/api/tts/hints', async (req, res) => {
+  const authed = await requireAuth(req, res);
+  if (!authed) return;
+  const actingUser = authed.db.users[authed.username];
+  if (!requireAdmin(actingUser, res)) return;
+  const body = req.body || {};
+  if (!ttsHints.isValidHz(body.hz)) return res.status(400).json({ ok: false, error: 'Từ không hợp lệ' });
+  try {
+    const word = await aiExplain.findWord(body.hz);
+    if (!word) return res.status(404).json({ ok: false, error: 'Không tìm thấy từ vựng' });
+    const clearing = body.say == null || body.say === '';
+    const out = clearing ? await ttsHints.removeHint(body.hz) : await ttsHints.setHint(body.hz, body.say, authed.username);
+    if (!out.ok) return res.status(400).json(out);
+    logActivity(authed.username, actingUser && actingUser.role, 'tts-hint', `${clearing ? 'Xoá' : 'Lưu'} chữ đọc: ${body.hz}${clearing ? '' : ' → ' + out.say}`);
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+app.post('/api/tts/suggest', async (req, res) => {
+  const authed = await requireAuth(req, res);
+  if (!authed) return;
+  const actingUser = authed.db.users[authed.username];
+  if (!requireAdmin(actingUser, res)) return;
+  try {
+    const asked = Array.isArray(req.body && req.body.words) ? req.body.words : [];
+    const hzList = [...new Set(asked.filter(h => ttsHints.isValidHz(h)))].slice(0, ttsHints.BATCH_MAX);
+    if (!hzList.length) return res.status(400).json({ ok: false, error: 'Chưa chọn từ nào' });
+    const words = [];
+    for (const hz of hzList) { const w = await aiExplain.findWord(hz); if (w) words.push(w); }
+    if (!words.length) return res.status(404).json({ ok: false, error: 'Không tìm thấy từ vựng' });
+    const text = await callGemini(ttsHints.buildSuggestPrompt(words));
+    const items = ttsHints.parseSuggestions(text, words);
+    logActivity(authed.username, actingUser && actingUser.role, 'tts-suggest', `AI đề xuất chữ đọc: ${words.map(w => w.hz).join(' ')}`);
+    res.json({ ok: true, items });
+  } catch (e) {
     if (e instanceof PublicError) return fail(res, e);
     if (isQuotaGeminiError(e && e.message)) return fail(res, e, 'AI đang hết lượt trong phút này. Đợi khoảng 1 phút rồi bấm thử lại nhé.');
     fail(res, e, 'Không gọi được AI lúc này. Thử lại sau ít phút nhé.');
