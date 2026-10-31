@@ -283,7 +283,8 @@ function renderTodayPanel(data) {
       ${mode('⏳', 'Kiểm tra sau khoảng nghỉ' + (b ? ` (${b.delayed})` : ''), "skStartPractice('delayed')", !b || b.delayed > 0, 'Chưa có từ đủ điều kiện')}
     </div>
     <div style="font-size:.7rem;color:var(--muted);margin-top:6px;line-height:1.5">Chế độ 1–2 vẫn là ôn chính thức theo FSRS (có đổi lịch ôn). Các chế độ còn lại là luyện bổ sung: chỉ ghi hồ sơ kỹ năng, <b>không đổi lịch FSRS</b>.
-    <label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" ${rvTypedEnabled() ? 'checked' : ''} onchange="rvSetTypedEnabled(this.checked)"> Cho phép câu tự gõ đáp án trong “Bắt đầu học”</label></div>
+    <label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" ${rvTypedEnabled() ? 'checked' : ''} onchange="rvSetTypedEnabled(this.checked)"> Cho phép câu tự gõ đáp án trong “Bắt đầu học”</label>
+    ${typeof rvmEnabled === 'function' ? `<label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" ${rvmEnabled() ? 'checked' : ''} onchange="rvmSetEnabled(this.checked)"> Câu luyện thêm gồm 3 phần (Pinyin · Nghĩa · Hán Việt), đúng 2/3 mới tính là đúng</label>` : ''}</div>
   </details>`;
 
   // V115 — BỐ CỤC GỌN: 1 nút lớn + 1 dòng mục tiêu + 3 con số chính. Mọi thứ còn lại gập vào \"Chi tiết\" (trước đây ~9 ô số + đoạn giải

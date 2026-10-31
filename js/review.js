@@ -62,6 +62,7 @@ const RV_QUIZ_TYPE = 'hz2vi'; // (giữ tên cũ cho tương thích)
 //   'match'          : 1 bài ghép cặp từ chính các từ của buổi — luyện bổ sung.
 //   'drill'          : (cũ, V105) tương đương 'extra' dạng nghĩa→chữ Hán; chỉ còn để đọc phiên đã lưu.
 let rvQuestion = null;          // câu hỏi hiện tại (QE) — sinh 1 lần/câu, không sinh lại mỗi lần render
+let rvMulti = null;             // V130: "câu 3 phần" (Pinyin·Nghĩa·Hán Việt, đúng 2/3) của câu LUYỆN THÊM hiện tại — xem js/review-multi.js; null = câu 1 phần như cũ
 let rvQSession = QS.newSession(); // lịch sử câu đã hỏi trong buổi (chống lặp, cân bằng vị trí đáp án)
 let rvLog = [];                 // nhật ký câu trả lời của buổi → màn Tổng kết
 let rvStage = 'run';            // 'start' (màn bắt đầu) | 'run'
@@ -471,7 +472,7 @@ function rvFindExample(hz) {
 function rvPrepareCurrentCard() {
   rvClearCountdown();
   rvCardSeq++;
-  rvQuestion = null; rvMatch = null;
+  rvQuestion = null; rvMatch = null; rvMulti = null;
   rvAnswerChanges = 0;
   rvLastAnswer = null;
   rvPhase = 'question';
@@ -490,7 +491,13 @@ function rvPrepareCurrentCard() {
       rvQueue.items.shift(); continue; // không đủ dữ liệu ghép cặp không mơ hồ → bỏ qua, không tạo bài giả
     }
     const q = rvBuildQuestionFor(item);
-    if (q) { rvQuestion = q; rvPhase = 'question'; break; }
+    if (q) {
+      rvQuestion = q; rvPhase = 'question';
+      // V130: câu luyện thêm → "câu 3 phần" (không đổi lịch FSRS). Không dựng đủ 3 phần / thiếu Hán Việt → giữ câu 1 phần như cũ.
+      rvMulti = (typeof rvmBuild === 'function') ? rvmBuild(item) : null;
+      if (rvMulti) rvQuestion = rvMulti.parts[0].q;
+      break;
+    }
     // Không dựng nổi câu hợp lệ nào cho từ này (kho từ quá ít): bỏ phần tử khỏi phiên thay vì kẹt vòng lặp.
     rvQueue.items.shift();
   }
@@ -1057,7 +1064,7 @@ function renderReview() {
   } else if (rvPhase === 'match' && rvMatch) {
     body = rvMatchHtml(tagLabel);
   } else if (rvPhase === 'question' && rvQuestion) {
-    body = rvQuestionBodyHtml(tagLabel, w);
+    body = (rvMulti && typeof rvmBodyHtml === 'function') ? rvmBodyHtml(tagLabel, w) : rvQuestionBodyHtml(tagLabel, w);
   } else if (practice) {
     // Màn đáp án của câu LUYỆN BỔ SUNG: không có thanh đánh giá FSRS (đây không phải lượt FSRS).
     const r = rvLastAnswer;
@@ -1066,8 +1073,9 @@ function renderReview() {
       <div class="rv-tag">${tagLabel} · ${lessonsLabel(w)}</div>
       <div class="rv-hz">${escapeHtml(w.hz)}</div>
       <div class="rv-feedback" style="color:${r && r.correct ? 'var(--l8a)' : 'var(--l10a)'};">
-        ${r && r.correct ? '✅ Chính xác' : '❌ Chưa đúng — xem lại và thử lại sau ít câu'}
+        ${(r && r.multi && typeof rvmFeedback === 'function') ? rvmFeedback(r) : (r && r.correct ? '✅ Chính xác' : '❌ Chưa đúng — xem lại và thử lại sau ít câu')}
       </div>
+      ${(r && r.multi && typeof rvmResultHtml === 'function') ? rvmResultHtml(r) : ''}
       <div class="rv-py">${escapeHtml(w.py || '')}</div>
       ${showMeaning ? `<div class="rv-vi">${escapeHtml(w.vi || '')}</div>` : ''}
       ${(w.hanviet && rvShowHV()) ? `<div class="rv-hv">Hán Việt: ${escapeHtml(w.hanviet)}</div>` : ''}
@@ -1143,6 +1151,7 @@ function bindReview() {
     return;
   }
   if (rvPhase !== 'question' || !rvQuestion) return;
+  if (rvMulti) return; // V130: câu 3 phần tự cập nhật DOM trong js/review-multi.js
   if (rvQuestion.typed) {
     // V117: chỉ tự đưa con trỏ vào ô nhập trên máy có chuột/bàn phím vật lý. Trên điện thoại KHÔNG tự bật bàn phím ảo (gây giật bố cục);
     // người học chạm vào ô khi sẵn sàng. Câu nghe-gõ vẫn tự phát âm đúng 1 lần.
